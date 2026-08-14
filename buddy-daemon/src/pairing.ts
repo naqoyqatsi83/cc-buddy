@@ -5,7 +5,9 @@ import { attachBridge, closeBridge } from "./bridge.js";
 import type { PeerInfo } from "./types.js";
 import type { BuddySession } from "./session.js";
 
-const HANDSHAKE_TIMEOUT_MS = 10_000;
+// Generous enough for a human to actually notice the phone, glance at the
+// request, and tap Accept — 10s proved too tight even in manual testing.
+const HANDSHAKE_TIMEOUT_MS = 60_000;
 
 /**
  * Dials out to the phone (PC always initiates, per spec — phones don't take
