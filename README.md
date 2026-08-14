@@ -50,7 +50,19 @@ Build order (from the spec) so far:
       the competing sockets, so `/buddy-scan` can miss it non-
       deterministically — a host-environment quirk, not a bug in this
       code; manual `/buddy-pair <ip> <pin>` is unaffected either way.
-- [ ] 8. Tailscale (should work for free once IP pairing works).
+- [x] 8. Tailscale — pairing itself needed no special code (the daemon's
+      WS client just dials whatever `ip:port` it's given, same code path
+      regardless of address range). What did need fixing: the phone was
+      only labeling an address "Tailscale" if the network interface name
+      literally contained "tailscale", which Android's Tailscale app
+      (a generic VpnService `tun*` interface) never does — so the IP
+      just silently showed up unlabeled, or not at all if mDNS also
+      couldn't reach it (mDNS doesn't route over the VPN). Now detected
+      by the 100.64.0.0/10 CGNAT range Tailscale actually assigns from,
+      regardless of interface name. Verified on the emulator by
+      attaching a real 100.x address to an unrelated dummy interface
+      (`dummy0`) via `adb root` + `ip addr add` — the app correctly
+      labeled and displayed it.
 - [ ] 9. Phase 2: FCM, encrypted token storage hardening, multi-session UI.
 
 ## Try it (daemon only, no phone yet)

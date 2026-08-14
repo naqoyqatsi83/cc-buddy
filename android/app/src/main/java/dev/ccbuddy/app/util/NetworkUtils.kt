@@ -8,8 +8,7 @@ data class LocalAddress(val label: String, val ip: String)
 /**
  * Every non-loopback IPv4 address currently on the device, labeled by
  * interface — so the pairing screen can show both the LAN Wi-Fi IP and,
- * if Tailscale is active, its 100.64.0.0/10 CGNAT-range IP (interface
- * name `tailscale0` on Android).
+ * if Tailscale is active, its address.
  */
 object NetworkUtils {
     fun localAddresses(): List<LocalAddress> {
@@ -27,7 +26,8 @@ object NetworkUtils {
                 if (addr !is Inet4Address) continue
                 if (addr.isLoopbackAddress) continue
                 val label = when {
-                    iface.name.contains("tailscale") -> "Tailscale"
+                    isTailscaleAddress(addr) -> "Tailscale"
+                    iface.name.contains("tailscale", ignoreCase = true) -> "Tailscale"
                     iface.name.startsWith("wlan") -> "Wi-Fi"
                     else -> iface.name
                 }
@@ -35,5 +35,21 @@ object NetworkUtils {
             }
         }
         return results
+    }
+
+    /**
+     * Tailscale assigns addresses from the 100.64.0.0/10 CGNAT range. That's
+     * the reliable signal — Android's Tailscale app runs as a generic
+     * VpnService, so the interface it creates is just a `tun*`/`tunN` device
+     * with no name tying it back to Tailscale, unlike desktop platforms'
+     * `tailscale0`. Checking the address range instead of the interface name
+     * is what actually works here, and is also what still finds Tailscale
+     * when mDNS can't (mDNS doesn't route across the VPN).
+     */
+    private fun isTailscaleAddress(addr: Inet4Address): Boolean {
+        val bytes = addr.address
+        val first = bytes[0].toInt() and 0xFF
+        val second = bytes[1].toInt() and 0xFF
+        return first == 100 && second in 64..127
     }
 }
