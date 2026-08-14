@@ -8,6 +8,8 @@ import android.view.ViewGroup
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.background
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -16,8 +18,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -218,20 +218,20 @@ fun TerminalScreen(
 
 /**
  * Plain, growing, independently-scrollable history — see
- * buddy-daemon/src/shadowTerminal.ts for how these lines are captured. A
- * LazyColumn appended to like this never fights the user's scroll
+ * buddy-daemon/src/shadowTerminal.ts for how these lines are captured.
+ * Appending to a plain Column like this never fights the user's scroll
  * position (unlike the live pane, it's just static text growing over
  * time), so ordinary touch-scroll works with no special handling needed —
  * and scrolling it never affects, or is affected by, the PC.
  */
 @Composable
 private fun TranscriptPane(lines: List<String>, modifier: Modifier = Modifier) {
+    // Plain LazyColumn, default wrap — every attempt to add horizontal
+    // scroll here (on the list itself, or per-row) broke vertical touch
+    // scroll, which matters far more than box-drawing art wrapping
+    // cleanly. Reliable vertical scroll wins.
     LazyColumn(modifier = modifier.background(Color(0xFF0D0D0D)).padding(horizontal = 4.dp)) {
         items(lines) { line ->
-            // Wrapped, not clipped, unlike the live pane below: this is
-            // plain captured text, not a column-aligned live grid, so
-            // nothing is lost by wrapping and nothing is lost by NOT
-            // supporting horizontal scroll here.
             Text(
                 text = line,
                 color = Color(0xFFE0E0E0),

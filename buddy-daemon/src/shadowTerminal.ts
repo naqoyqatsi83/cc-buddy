@@ -38,7 +38,7 @@ const { Terminal } = pkg;
  */
 export class ShadowTerminal {
   private term: TerminalType;
-  private lastSnapshot = "";
+  private lastLines: string[] = [];
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
@@ -70,9 +70,22 @@ export class ShadowTerminal {
     // Trim trailing blank rows (the screen usually isn't fully packed) so
     // near-empty frames don't get padded out with blank lines forever.
     while (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
-    const snapshot = lines.join("\n");
-    if (snapshot.length === 0 || snapshot === this.lastSnapshot) return;
-    this.lastSnapshot = snapshot;
-    this.onAppend(lines);
+    if (lines.length === 0) return;
+
+    // Only append the lines that actually changed from the last capture —
+    // find the first row that differs (e.g. everything above a status
+    // line that just ticked its context percentage is identical) and only
+    // send from there. Appending the *entire* screen on every capture
+    // (the first version of this) buried History in near-duplicate
+    // full-screen dumps every time something as small as a status line
+    // changed, which is what made it confusing to read.
+    let firstDiff = 0;
+    const minLen = Math.min(lines.length, this.lastLines.length);
+    while (firstDiff < minLen && lines[firstDiff] === this.lastLines[firstDiff]) firstDiff++;
+    if (firstDiff === lines.length && lines.length === this.lastLines.length) {
+      return; // identical to last capture
+    }
+    this.lastLines = lines;
+    this.onAppend(lines.slice(firstDiff));
   }
 }
