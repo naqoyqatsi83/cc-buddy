@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">CC Buddy</string>
+    <string name="notification_channel_name">CC Buddy listening</string>
+    <string name="notification_listening">CC Buddy — listening for pairing</string>
+</resources>
