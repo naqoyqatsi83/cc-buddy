@@ -54,9 +54,21 @@
     // the PC at all. cols still should (see resizeCols), so long lines
     // don't wrap somewhere different than they were originally formatted
     // for — that's what horizontal scroll is for instead.
+    // A fixed, readable font size — like a real terminal, where resizing
+    // the window changes how many rows/cols are visible, never the font
+    // itself. rows starts at a placeholder and gets computed for real in
+    // resizeToContainer() below; leaving it at xterm's own default (24)
+    // permanently was a real bug found in testing — CSS still stretches
+    // that fixed 24-row grid to fill the WebView's entire height
+    // regardless, so with way more pixels than 24 rows need, every row
+    // (blank ones included) rendered as a huge stretched cell, which is
+    // what "huge gaps, have to scroll forever" actually was.
+    var FONT_SIZE = 14;
+    var ROW_HEIGHT_FACTOR = 1.15;
+
     var term = new Terminal({
       convertEol: true,
-      fontSize: 14,
+      fontSize: FONT_SIZE,
       fontFamily: "monospace",
       theme: { background: "#0d0d0d", foreground: "#e0e0e0" },
       disableStdin: true,
@@ -75,6 +87,20 @@
       if (cols === lastCols) return;
       lastCols = cols;
       term.resize(cols, term.rows);
+    }
+
+    // Called from Android (via Modifier.onSizeChanged on the WebView's
+    // Compose slot, converted to CSS px) whenever its real measured
+    // height changes. Computes how many rows actually fit at the fixed
+    // font size — the container's height adapting the row *count* is the
+    // right direction of fit; the earlier, wrong direction (shrinking
+    // *font* to force a fixed row count into whatever height existed) is
+    // what caused most of this project's sizing bugs.
+    function resizeToContainer(heightPx) {
+      var rows = Math.max(1, Math.floor(heightPx / (FONT_SIZE * ROW_HEIGHT_FACTOR)));
+      if (rows === term.rows) return;
+      term.resize(term.cols, rows);
+      term.scrollToBottom();
     }
 
     // Called from Android with newly-captured history lines (see

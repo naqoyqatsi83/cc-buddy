@@ -32,6 +32,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -135,10 +137,22 @@ fun TerminalScreen(
             Text(deviceName, modifier = Modifier.padding(top = 12.dp, end = 8.dp))
         }
 
+        val density = LocalDensity.current.density
+        var containerHeightCssPx by remember { mutableStateOf(0) }
         TerminalWebView(
-            modifier = Modifier.fillMaxWidth().weight(1f),
+            modifier = Modifier.fillMaxWidth().weight(1f)
+                .onSizeChanged { size -> containerHeightCssPx = (size.height / density).toInt() },
             onReady = { webView = it }
         )
+        // Also re-applied whenever webView itself changes (becomes ready,
+        // or is recreated on peer switch) using whatever height was last
+        // measured — onSizeChanged alone can fire before the WebView has
+        // finished loading resizeToContainer() into existence.
+        LaunchedEffect(webView, containerHeightCssPx) {
+            if (containerHeightCssPx > 0) {
+                webView?.evaluateJavascript("resizeToContainer($containerHeightCssPx)", null)
+            }
+        }
 
         TailFooter(lines = tail, modifier = Modifier.fillMaxWidth())
 
