@@ -88,7 +88,10 @@ Build order (from the spec) so far:
   - [ ] FCM for notifications when the app's fully backgrounded/killed —
         needs a Firebase project and a small cloud relay service, both
         requiring external account setup this environment can't do
-        autonomously. Not started.
+        autonomously. Deliberately skipped for now: the foreground
+        service already delivers notifications while the app is merely
+        backgrounded, which covers the common case. Revisit if
+        killed-app notifications turn out to matter in practice.
 
 ## Try it (daemon only, no phone yet)
 
