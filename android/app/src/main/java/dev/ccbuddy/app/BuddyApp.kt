@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.os.Build
 import dev.ccbuddy.app.data.PairingState
 import dev.ccbuddy.app.data.PeerRepository
+import dev.ccbuddy.app.data.TerminalBridge
 import dev.ccbuddy.app.data.TokenStore
 
 class BuddyApp : Application() {
@@ -16,12 +17,15 @@ class BuddyApp : Application() {
         private set
     lateinit var pairingState: PairingState
         private set
+    lateinit var terminalBridge: TerminalBridge
+        private set
 
     override fun onCreate() {
         super.onCreate()
         tokenStore = TokenStore(this)
         peerRepository = PeerRepository(tokenStore)
         pairingState = PairingState()
+        terminalBridge = TerminalBridge()
         createNotificationChannel()
     }
 

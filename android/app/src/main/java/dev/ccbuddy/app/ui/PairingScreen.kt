@@ -16,6 +16,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,6 +37,7 @@ fun PairingScreen(
     pendingRequest: PendingPairRequest?,
     onRegeneratePin: () -> Unit,
     onUnpair: (PeerSession) -> Unit,
+    onOpenTerminal: (PeerSession) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.verticalScroll(rememberScrollState()).padding(16.dp)) {
@@ -69,7 +71,7 @@ fun PairingScreen(
             Text("None yet. Run /buddy-pair <ip> <pin> from a buddy-daemon session.")
         } else {
             Column {
-                peers.forEach { peer -> PeerRow(peer, onUnpair) }
+                peers.forEach { peer -> PeerRow(peer, onUnpair, onOpenTerminal) }
             }
         }
     }
@@ -106,7 +108,7 @@ private fun PinCard(activePin: ActivePin?, onRegeneratePin: () -> Unit) {
 }
 
 @Composable
-private fun PeerRow(peer: PeerSession, onUnpair: (PeerSession) -> Unit) {
+private fun PeerRow(peer: PeerSession, onUnpair: (PeerSession) -> Unit, onOpenTerminal: (PeerSession) -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -121,8 +123,13 @@ private fun PeerRow(peer: PeerSession, onUnpair: (PeerSession) -> Unit) {
                 else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
             )
         }
-        OutlinedButton(onClick = { onUnpair(peer) }) {
-            Text("Unpair")
+        Row {
+            if (peer.connected) {
+                TextButton(onClick = { onOpenTerminal(peer) }) { Text("Open") }
+            }
+            OutlinedButton(onClick = { onUnpair(peer) }) {
+                Text("Unpair")
+            }
         }
     }
 }

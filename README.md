@@ -12,9 +12,10 @@ from the phone. See `buddy-cc-android-pairing-spec.md` for the full design.
 - `buddy-plugin/` — Claude Code plugin providing `/buddy-scan`,
   `/buddy-pair`, `/buddy-list`, `/buddy-unpair`. Thin wrappers over the
   daemon's control API via `BUDDY_DAEMON_URL` / `BUDDY_SESSION_ID`.
-- `android/` — CC Buddy Android app (Kotlin + Jetpack Compose). MVP:
-  foreground service, embedded Ktor WS server on port 8765, PIN pairing
-  handshake, paired-session list. No terminal mirror yet.
+- `android/` — CC Buddy Android app (Kotlin + Jetpack Compose). Foreground
+  service, embedded Ktor WS server on port 8765, PIN pairing handshake,
+  paired-session list, and a live xterm.js terminal mirror with reply
+  injection.
 
 ## Status
 
@@ -25,10 +26,13 @@ Build order (from the spec) so far:
 - [x] 2. Localhost control API (`/sessions`, `/scan`, `/pair`, `/peers`,
       `/unpair`, `/hook/*`) + the four `/buddy-*` commands.
 - [x] 3. Android app MVP (foreground service + embedded Ktor WS server +
-      PIN pairing screen + accept/deny prompt + paired-session list). No
-      terminal mirror yet — that's step 4.
-- [ ] 4. PTY streaming + xterm.js mirror on the phone.
-- [ ] 5. Reply injection (phone → daemon → `pty.write()`).
+      PIN pairing screen + accept/deny prompt + paired-session list).
+- [x] 4. PTY streaming: daemon forwards raw PTY output over the pairing
+      WS as `pty_data` frames; phone renders it with a bundled xterm.js
+      in a WebView.
+- [x] 5. Reply injection: phone sends `input` frames (quick-reply buttons
+      or the text field's Send button), daemon writes them into the PTY
+      as `text + "\r"`.
 - [ ] 6. Claude Code HTTP hooks wired to push notifications.
 - [ ] 7. mDNS discovery both sides.
 - [ ] 8. Tailscale (should work for free once IP pairing works).

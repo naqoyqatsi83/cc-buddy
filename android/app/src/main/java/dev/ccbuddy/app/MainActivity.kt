@@ -9,6 +9,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -17,6 +18,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import dev.ccbuddy.app.ui.PairingScreen
+import dev.ccbuddy.app.ui.TerminalScreen
 import dev.ccbuddy.app.ui.theme.CCBuddyTheme
 import dev.ccbuddy.app.util.NetworkUtils
 
@@ -39,19 +41,35 @@ class MainActivity : ComponentActivity() {
                     val activePin by app.pairingState.activePin.collectAsState()
                     val pendingRequest by app.pairingState.pendingRequest.collectAsState()
                     val peers by app.peerRepository.peers.collectAsState()
+                    val activeBridgePeerId by app.terminalBridge.activePeerId.collectAsState()
                     var localAddresses by remember { mutableStateOf(NetworkUtils.localAddresses()) }
+                    var viewingTerminal by remember { mutableStateOf(false) }
 
-                    PairingScreen(
-                        activePin = activePin,
-                        localAddresses = localAddresses,
-                        peers = peers,
-                        pendingRequest = pendingRequest,
-                        onRegeneratePin = {
-                            regeneratePinDirectly()
-                            localAddresses = NetworkUtils.localAddresses()
-                        },
-                        onUnpair = { peer -> app.peerRepository.remove(peer.id) }
-                    )
+                    // Jump to the terminal automatically the moment a bridge attaches
+                    // (fresh pairing, or a reconnect from an already-paired daemon).
+                    LaunchedEffect(activeBridgePeerId) {
+                        if (activeBridgePeerId != null) viewingTerminal = true
+                    }
+
+                    if (viewingTerminal && activeBridgePeerId != null) {
+                        TerminalScreen(
+                            terminalBridge = app.terminalBridge,
+                            onBack = { viewingTerminal = false }
+                        )
+                    } else {
+                        PairingScreen(
+                            activePin = activePin,
+                            localAddresses = localAddresses,
+                            peers = peers,
+                            pendingRequest = pendingRequest,
+                            onRegeneratePin = {
+                                regeneratePinDirectly()
+                                localAddresses = NetworkUtils.localAddresses()
+                            },
+                            onUnpair = { peer -> app.peerRepository.remove(peer.id) },
+                            onOpenTerminal = { viewingTerminal = true }
+                        )
+                    }
                 }
             }
         }

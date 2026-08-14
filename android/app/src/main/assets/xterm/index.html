@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  <link rel="stylesheet" href="xterm.css" />
+  <style>
+    html, body { margin: 0; padding: 0; background: #0d0d0d; height: 100%; }
+    #term { height: 100%; }
+  </style>
+</head>
+<body>
+  <div id="term"></div>
+  <script src="xterm.js"></script>
+  <script>
+    var term = new Terminal({
+      convertEol: true,
+      fontSize: 13,
+      fontFamily: "monospace",
+      theme: { background: "#0d0d0d", foreground: "#e0e0e0" },
+      disableStdin: true,
+      scrollback: 5000
+    });
+    term.open(document.getElementById("term"));
+
+    // Called from Android via evaluateJavascript(); base64 avoids any
+    // escaping headaches with control chars / ANSI sequences in raw PTY
+    // output.
+    function writeChunkB64(b64) {
+      // Decode to raw bytes (not a JS string) so xterm's UTF-8 decoder
+      // handles multi-byte characters correctly instead of misreading
+      // each byte as its own UTF-16 code unit.
+      var binary = atob(b64);
+      var bytes = new Uint8Array(binary.length);
+      for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      term.write(bytes);
+    }
+
+    function clearTerminal() {
+      term.reset();
+    }
+  </script>
+</body>
+</html>

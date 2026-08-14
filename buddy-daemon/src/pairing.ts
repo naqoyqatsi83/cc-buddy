@@ -1,6 +1,7 @@
 import { WebSocket } from "ws";
 import { randomUUID } from "node:crypto";
 import { addToken, removeToken } from "./tokenStore.js";
+import { attachBridge, closeBridge } from "./bridge.js";
 import type { PeerInfo } from "./types.js";
 import type { BuddySession } from "./session.js";
 
@@ -62,9 +63,8 @@ export function pairWithPhone(
           pairedAt: peer.pairedAt,
         });
         session.info.peers.push(peer);
+        attachBridge(session, peer.id, ws);
         resolve(peer);
-        // Leave the socket attached for the PTY bridge (wired in a later
-        // build-order step); don't close it here.
       } else if (msg.type === "pair_denied") {
         clearTimeout(timer);
         ws.close();
@@ -84,6 +84,7 @@ export function unpairPeer(session: BuddySession, peerId: string): boolean {
   if (idx === -1) return false;
   session.info.peers.splice(idx, 1);
   removeToken(peerId);
+  closeBridge(peerId);
   return true;
 }
 

@@ -33,6 +33,7 @@ class BuddyForegroundService : Service() {
         wsServer = BuddyWsServer(
             pairingState = app.pairingState,
             peerRepository = app.peerRepository,
+            terminalBridge = app.terminalBridge,
             phoneDeviceName = { Build.MODEL ?: "Android phone" }
         )
     }

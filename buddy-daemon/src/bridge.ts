@@ -1,0 +1,51 @@
+import { WebSocket } from "ws";
+import type { BuddySession } from "./session.js";
+
+const activeSockets = new Map<string, WebSocket>();
+
+/**
+ * Wires a paired phone's WS connection to the PTY in both directions
+ * (build-order steps 4-5): raw PTY output chunks stream out as `pty_data`
+ * frames, and `input` frames from the phone are written into the PTY as a
+ * complete reply followed by Enter — matching the spec's quick-reply /
+ * text-field-and-send-button UI rather than raw keystroke-by-keystroke
+ * streaming.
+ */
+export function attachBridge(session: BuddySession, peerId: string, ws: WebSocket) {
+  activeSockets.set(peerId, ws);
+
+  const unsubscribe = session.onData((chunk) => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "pty_data", data: chunk }));
+    }
+  });
+
+  ws.on("message", (raw) => {
+    let msg: any;
+    try {
+      msg = JSON.parse(raw.toString());
+    } catch {
+      return;
+    }
+    if (msg.type === "input" && typeof msg.data === "string") {
+      session.pty.write(msg.data + "\r");
+    }
+  });
+
+  const cleanup = () => {
+    unsubscribe();
+    activeSockets.delete(peerId);
+    const peer = session.info.peers.find((p) => p.id === peerId);
+    if (peer) peer.connected = false;
+  };
+  ws.on("close", cleanup);
+  ws.on("error", cleanup);
+}
+
+export function closeBridge(peerId: string) {
+  const ws = activeSockets.get(peerId);
+  if (ws) {
+    ws.close();
+    activeSockets.delete(peerId);
+  }
+}

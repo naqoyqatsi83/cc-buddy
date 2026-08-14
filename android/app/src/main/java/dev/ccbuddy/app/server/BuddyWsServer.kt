@@ -5,6 +5,7 @@ import dev.ccbuddy.app.data.PairingState
 import dev.ccbuddy.app.data.PeerRepository
 import dev.ccbuddy.app.data.PeerSession
 import dev.ccbuddy.app.data.PendingPairRequest
+import dev.ccbuddy.app.data.TerminalBridge
 import io.ktor.server.application.Application
 import io.ktor.server.application.install
 import io.ktor.server.cio.CIO
@@ -25,14 +26,16 @@ import java.util.UUID
 
 /**
  * The phone's WS server (Component 3 in the spec): the daemon dials into
- * this, never the other way around. Runs the pairing handshake described
- * in the spec — PIN + explicit accept/deny tap, long-lived token on
- * success. Terminal streaming / reply injection are later build-order
- * steps; for now the socket just proves the handshake and then idles.
+ * this, never the other way around. Runs the pairing handshake (PIN +
+ * explicit accept/deny tap, long-lived token on success) and then bridges
+ * the same connection to [TerminalBridge] — `pty_data` frames from the
+ * daemon feed the terminal mirror, and replies typed on the phone go back
+ * out as `input` frames.
  */
 class BuddyWsServer(
     private val pairingState: PairingState,
     private val peerRepository: PeerRepository,
+    private val terminalBridge: TerminalBridge,
     private val phoneDeviceName: () -> String
 ) {
     private var engine: ApplicationEngine? = null
@@ -63,15 +66,23 @@ class BuddyWsServer(
                         when (msg.optString("type")) {
                             "pair_request" -> {
                                 pairedPeerId = handlePairRequest(msg, remoteAddress)
+                                pairedPeerId?.let { attachBridge(it) }
                             }
                             "reconnect" -> {
                                 pairedPeerId = handleReconnect(msg)
+                                pairedPeerId?.let { attachBridge(it) }
                             }
-                            else -> Unit // terminal streaming / replies: later build-order steps
+                            "pty_data" -> {
+                                terminalBridge.emitOutput(msg.optString("data"))
+                            }
+                            else -> Unit
                         }
                     }
                 } finally {
-                    pairedPeerId?.let { peerRepository.setConnected(it, false) }
+                    pairedPeerId?.let {
+                        peerRepository.setConnected(it, false)
+                        terminalBridge.detach(it)
+                    }
                 }
             }
         }
@@ -136,6 +147,12 @@ class BuddyWsServer(
         peerRepository.setConnected(peer.id, true)
         send(Frame.Text(JSONObject().put("type", "reconnect_ok").toString()))
         return peer.id
+    }
+
+    private fun io.ktor.server.websocket.DefaultWebSocketServerSession.attachBridge(peerId: String) {
+        terminalBridge.attach(peerId) { text ->
+            send(Frame.Text(JSONObject().put("type", "input").put("data", text).toString()))
+        }
     }
 
     private fun generateToken(): String {
