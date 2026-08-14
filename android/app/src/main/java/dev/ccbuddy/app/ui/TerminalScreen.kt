@@ -7,12 +7,17 @@ import android.view.MotionEvent
 import android.view.ViewGroup
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -26,7 +31,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import dev.ccbuddy.app.data.TerminalBridge
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,15 +44,22 @@ import org.json.JSONArray
 private val QUICK_REPLIES = listOf("1", "2", "y", "n", "")
 
 /**
- * One unified terminal-like view — not split into separate "history" and
- * "live" panes (that was tried and rejected: the ask was a single session
- * log matching how a real terminal works, everything ever shown, freely
- * scrollable, prompt/status flush at the bottom). See
- * buddy-daemon/src/shadowTerminal.ts and index.html for how this is safe
- * to build as one xterm.js instance with a normal (non-alt-screen)
- * scrollback: it's fed plain, already-rendered, diffed text — not raw PTY
- * bytes — so it doesn't need to mirror the PC's exact row count the way
- * the old raw-byte mirror did.
+ * A scrollable history (everything ever shown) with a small fixed footer
+ * below it — the current prompt + status, always visible, updated in
+ * place, that scrolling the history never disturbs. A single unified
+ * scrollable stream (tried first) was wrong: scrolling up carried the
+ * prompt/status away with it instead of leaving them anchored, which
+ * doesn't match how a real terminal's status line or a chat app's input
+ * bar behaves. See buddy-daemon/src/shadowTerminal.ts for how the two are
+ * genuinely distinct daemon-side: lines that have permanently scrolled
+ * off the PC's active screen (history, appended once) versus the current
+ * active screen itself (tail, replaced wholesale as it's redrawn).
+ *
+ * The history pane is xterm.js (buddy-daemon captures plain, diffed,
+ * already-rendered text — not raw PTY bytes — so a normal, non-alt-screen
+ * scrollback works safely here without needing to mirror the PC's exact
+ * row count). The footer is plain Compose text — it's only ever a few
+ * lines, no scrolling needed.
  */
 @Composable
 fun TerminalScreen(
@@ -59,6 +74,8 @@ fun TerminalScreen(
     var replyText by remember { mutableStateOf("") }
 
     val transcript by (terminalBridge.transcriptFlow(peerId) ?: remember { MutableStateFlow(emptyList()) })
+        .collectAsState(initial = emptyList())
+    val tail by (terminalBridge.tailFlow(peerId) ?: remember { MutableStateFlow(emptyList()) })
         .collectAsState(initial = emptyList())
 
     LaunchedEffect(peerId, webView) {
@@ -123,6 +140,8 @@ fun TerminalScreen(
             onReady = { webView = it }
         )
 
+        TailFooter(lines = tail, modifier = Modifier.fillMaxWidth())
+
         Row(
             modifier = Modifier.fillMaxWidth().padding(8.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -157,6 +176,46 @@ fun TerminalScreen(
             }) {
                 Text("Send")
             }
+        }
+    }
+}
+
+/**
+ * The current prompt + status, fixed at the bottom of the screen — see
+ * the file-level doc comment. Not a LazyColumn: this is only ever a
+ * handful of lines (no need for lazy virtualization), and a plain Column
+ * with a single horizontalScroll modifier is simplest/safest here —
+ * mixing horizontal and vertical scroll modifiers caused real problems
+ * for the (much longer) history list, but there's no vertical scroll
+ * here to conflict with at all.
+ */
+@Composable
+private fun TailFooter(lines: List<String>, modifier: Modifier = Modifier) {
+    if (lines.isEmpty()) return
+    // In real usage the tail (prompt + status) is only ever a handful of
+    // lines — real conversations exceed the PC terminal's row count
+    // quickly, at which point everything except the true tail flows into
+    // history instead. But nothing guarantees that (a short session, or a
+    // TUI with a large redrawable area), and an unbounded footer here
+    // once ate the whole screen — starving the history WebView and
+    // pushing the reply UI off-screen entirely, which is exactly what it
+    // looks like when a real user says "I can't see the prompt or status
+    // bar at all". Capped height with its own scroll as a hard backstop.
+    Column(
+        modifier = modifier.background(Color(0xFF0D0D0D))
+            .heightIn(max = 160.dp)
+            .verticalScroll(rememberScrollState())
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 4.dp, vertical = 2.dp)
+    ) {
+        lines.forEach { line ->
+            Text(
+                text = line,
+                color = Color(0xFFE0E0E0),
+                fontFamily = FontFamily.Monospace,
+                fontSize = 13.sp,
+                softWrap = false
+            )
         }
     }
 }

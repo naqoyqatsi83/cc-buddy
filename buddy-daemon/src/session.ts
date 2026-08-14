@@ -24,6 +24,11 @@ export interface BuddySession {
   transcript: string[];
   /** Fires with newly-appended transcript lines as they're captured. */
   onTranscriptAppend: (listener: (lines: string[]) => void) => () => void;
+  /** The current active screen (prompt + status, still redrawable in
+   * place) — a fixed footer on the phone, not appended to history. */
+  tail: string[];
+  /** Fires whenever the tail changes (wholesale replace, not append). */
+  onTailUpdate: (listener: (lines: string[]) => void) => () => void;
 }
 
 export interface StartSessionOptions {
@@ -45,6 +50,8 @@ export function startSession(opts: StartSessionOptions): BuddySession {
   const resizeListeners = new Set<(size: PtySize) => void>();
   const transcriptListeners = new Set<(lines: string[]) => void>();
   const transcript: string[] = [];
+  const tailListeners = new Set<(lines: string[]) => void>();
+  let tail: string[] = [];
 
   const ptyProcess = pty.spawn(shellForPlatform(), opts.claudeArgs, {
     name: "xterm-256color",
@@ -74,6 +81,10 @@ export function startSession(opts: StartSessionOptions): BuddySession {
     (lines) => {
       transcript.push(...lines);
       for (const listener of transcriptListeners) listener(lines);
+    },
+    (lines) => {
+      tail = lines;
+      for (const listener of tailListeners) listener(lines);
     }
   );
 
@@ -128,6 +139,16 @@ export function startSession(opts: StartSessionOptions): BuddySession {
     onTranscriptAppend: (listener) => {
       transcriptListeners.add(listener);
       return () => transcriptListeners.delete(listener);
+    },
+    // Getter, not a plain property: `tail` is reassigned (not mutated in
+    // place) on every update, so a plain property would freeze on
+    // whatever it was at attach time.
+    get tail() {
+      return tail;
+    },
+    onTailUpdate: (listener) => {
+      tailListeners.add(listener);
+      return () => tailListeners.delete(listener);
     },
   };
 }

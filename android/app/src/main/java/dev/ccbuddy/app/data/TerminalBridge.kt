@@ -36,6 +36,10 @@ class TerminalBridge {
         // can never change again. Rendered as its own independently-
         // scrollable pane, decoupled from the live mirror below it.
         val transcript: MutableStateFlow<List<String>> = MutableStateFlow(emptyList()),
+        // The current active screen (prompt + status) — still redrawable
+        // in place daemon-side, so this is a fixed footer that gets
+        // replaced wholesale, not appended to the scrollable transcript.
+        val tail: MutableStateFlow<List<String>> = MutableStateFlow(emptyList()),
         // (frameType, data) -> Unit. frameType is "input" (complete reply,
         // daemon appends Enter) or "raw_input" (literal keystroke, e.g.
         // Tab — must NOT get an Enter appended).
@@ -91,6 +95,15 @@ class TerminalBridge {
 
     /** Null if this peer has no live connection right now. */
     fun transcriptFlow(peerId: String): StateFlow<List<String>>? = bridges[peerId]?.transcript
+
+    /** Replaces the whole tail — used for both the initial send and every update. */
+    @Synchronized
+    fun setTail(peerId: String, lines: List<String>) {
+        bridges[peerId]?.tail?.value = lines
+    }
+
+    /** Null if this peer has no live connection right now. */
+    fun tailFlow(peerId: String): StateFlow<List<String>>? = bridges[peerId]?.tail
 
     /** A complete reply — the daemon appends Enter (e.g. quick-reply buttons, the text field's Send). */
     suspend fun sendInput(peerId: String, text: String) {

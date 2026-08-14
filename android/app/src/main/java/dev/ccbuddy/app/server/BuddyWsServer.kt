@@ -96,6 +96,11 @@ class BuddyWsServer(
                                     terminalBridge.appendTranscript(it, msg.optJSONArray("lines").toStringList())
                                 }
                             }
+                            "tail_update" -> {
+                                pairedPeerId?.let {
+                                    terminalBridge.setTail(it, msg.optJSONArray("lines").toStringList())
+                                }
+                            }
                             "notification" -> {
                                 hookNotifier.onClaudeNotification(
                                     msg.optString("message", "Claude needs your attention")

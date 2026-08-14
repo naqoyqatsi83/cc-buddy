@@ -38,6 +38,17 @@ export function attachBridge(session: BuddySession, peerId: string, ws: WebSocke
     }
   });
 
+  // The current active screen (prompt + status) — a fixed footer on the
+  // phone, replaced wholesale each time rather than appended to history.
+  if (ws.readyState === WebSocket.OPEN && session.tail.length > 0) {
+    ws.send(JSON.stringify({ type: "tail_update", lines: session.tail }));
+  }
+  const unsubscribeTail = session.onTailUpdate((lines) => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "tail_update", lines }));
+    }
+  });
+
   const unsubscribe = session.onData((chunk) => {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: "pty_data", data: chunk }));
@@ -64,6 +75,7 @@ export function attachBridge(session: BuddySession, peerId: string, ws: WebSocke
     unsubscribe();
     unsubscribeResize();
     unsubscribeTranscript();
+    unsubscribeTail();
     activeSockets.delete(peerId);
     const peer = session.info.peers.find((p) => p.id === peerId);
     if (peer) peer.connected = false;
