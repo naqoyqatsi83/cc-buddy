@@ -40,10 +40,35 @@ const { Terminal } = pkg;
  * A capture is also forced at least every 2s even under continuous
  * output, so a long unbroken burst doesn't delay bucket (1) indefinitely.
  */
+function sameLines(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+function isPureRepeatOf(block: string[], line: string | null): boolean {
+  if (line == null || block.length === 0) return false;
+  return block.every((l) => l === line);
+}
+
 export class ShadowTerminal {
   private term: TerminalType;
   private capturedBoundary = 0; // buffer index up to which lines are already permanently captured
   private lastActiveLines: string[] = [];
+  // The most recently appended block, whichever bucket it came from — some
+  // TUIs (this one included, apparently) periodically re-render their
+  // whole idle screen (e.g. a cycling hint or timer), which pushes new
+  // lines into "permanently scrolled off" territory even though the
+  // content is just a repeat. Comparing against only the immediately
+  // preceding block is a cheap, good-enough guard against that without
+  // trying to detect a general idle-refresh pattern.
+  private lastAppendedBlock: string[] = [];
+  // Also tracked separately: a block that's entirely repeats of this one
+  // line is suppressed too — catches the transition into a steady idle
+  // refresh, where each capture's *new suffix* is a single line that
+  // matches the previous single-line append, even though lastAppendedBlock
+  // itself was a larger, differently-shaped block at that point.
+  private lastAppendedLine: string | null = null;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private maxWaitTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -85,13 +110,20 @@ export class ShadowTerminal {
     const appended: string[] = [];
 
     // 1) Lines that have permanently scrolled off the active screen since
-    // the last capture — safe to append exactly once, verbatim.
+    // the last capture — safe to append exactly once, verbatim, unless
+    // it's an exact repeat of the block we just appended (idle refresh).
     if (permanentBoundary > this.capturedBoundary) {
+      const block: string[] = [];
       for (let i = this.capturedBoundary; i < permanentBoundary; i++) {
         const line = buf.getLine(i);
-        appended.push(line ? line.translateToString(true) : "");
+        block.push(line ? line.translateToString(true) : "");
       }
       this.capturedBoundary = permanentBoundary;
+      if (!sameLines(block, this.lastAppendedBlock) && !isPureRepeatOf(block, this.lastAppendedLine)) {
+        appended.push(...block);
+        this.lastAppendedBlock = block;
+        this.lastAppendedLine = block[block.length - 1];
+      }
     }
 
     // 2) The current active screen — still redrawable in place — diffed
@@ -107,9 +139,14 @@ export class ShadowTerminal {
     const minLen = Math.min(activeLines.length, this.lastActiveLines.length);
     while (firstDiff < minLen && activeLines[firstDiff] === this.lastActiveLines[firstDiff]) firstDiff++;
     const activeChanged = !(firstDiff === activeLines.length && activeLines.length === this.lastActiveLines.length);
+    this.lastActiveLines = activeLines;
     if (activeChanged) {
-      appended.push(...activeLines.slice(firstDiff));
-      this.lastActiveLines = activeLines;
+      const block = activeLines.slice(firstDiff);
+      if (!sameLines(block, this.lastAppendedBlock) && !isPureRepeatOf(block, this.lastAppendedLine)) {
+        appended.push(...block);
+        this.lastAppendedBlock = block;
+        this.lastAppendedLine = block[block.length - 1];
+      }
     }
 
     if (appended.length > 0) this.onAppend(appended);
