@@ -63,12 +63,16 @@
 
     // Called from Android whenever the PC terminal's size is known (once
     // at pairing, again if the PC resizes its window). Font size is
-    // chosen to make the real row count fill the available height —
-    // rounding up, since xterm always auto-scrolls to its newest line, so
-    // a terminal at least full height puts the prompt flush at the
-    // bottom with any overshoot simply becoming scrollable.
+    // chosen to make the real row count fit the available height —
+    // rounding DOWN. The active grid (rows == the real PTY's row count)
+    // is a fixed-size screen, not itself scrollable: only rows that have
+    // actually scrolled off the top become reachable scrollback. Rounding
+    // up ("overshoot") was tried first and was wrong — it doesn't create
+    // extra scrollable space, it silently clips the bottom row(s) of the
+    // active screen (e.g. a status line below the prompt) off-screen with
+    // no way to reach them.
     function resizeTerm(cols, rows) {
-      var fontSize = Math.ceil(window.innerHeight / (rows * ROW_HEIGHT_FACTOR));
+      var fontSize = Math.floor(window.innerHeight / (rows * ROW_HEIGHT_FACTOR));
       fontSize = Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, fontSize));
       term.options.fontSize = fontSize;
       term.resize(cols, rows);

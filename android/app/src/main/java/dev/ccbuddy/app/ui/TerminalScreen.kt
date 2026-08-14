@@ -153,12 +153,19 @@ private fun TerminalWebView(modifier: Modifier = Modifier, onReady: (WebView) ->
                 settings.javaScriptEnabled = true
                 // The terminal is no longer reflowed to fit the screen (see
                 // index.html) — it renders at the PC terminal's actual size,
-                // which is usually wider than the phone, so pinch-zoom and
-                // 2D scrolling are how you navigate it instead of wrapping.
-                settings.useWideViewPort = true
-                settings.loadWithOverviewMode = false
-                settings.setSupportZoom(true)
-                settings.builtInZoomControls = true
+                // which is usually wider than the phone. Horizontal panning
+                // is handled by plain CSS overflow-x:auto on #scrollx in
+                // index.html, and vertical scrollback by xterm.js's own
+                // internal viewport — both scroll via ordinary touch-drag
+                // with no WebView-level zoom needed. Native pinch-zoom/pan
+                // (setSupportZoom/builtInZoomControls/useWideViewPort) was
+                // tried first for horizontal panning and was wrong: it
+                // captures single-finger drag gestures for the WebView's
+                // own page panning, which starved xterm's internal
+                // scrollback viewport of the touch events it needs — the
+                // net effect was vertical scroll not working at all.
+                settings.setSupportZoom(false)
+                settings.builtInZoomControls = false
                 settings.displayZoomControls = false
                 // Only signal ready once the page (and xterm.js, and our
                 // writeChunkB64/clearTerminal functions) has actually

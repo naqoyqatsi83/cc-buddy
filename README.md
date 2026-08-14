@@ -147,6 +147,34 @@ Build order (from the spec) so far:
         still-pending render). Re-verified the same freeze scenario twice
         on the emulator, including the original box-drawing-header
         reproduction — content now reaches the final prompt both times.
+
+        Two more real-device reports followed: vertical scroll still
+        didn't work at all, and a status line placed below the prompt
+        (below the terminal's last active row) was invisible. Both traced
+        back to earlier decisions in this same fix that turned out to be
+        wrong:
+        - The font-size heuristic rounded *up* so the real row count would
+          "at least" fill the screen, reasoning any overshoot just becomes
+          scrollable. That's wrong for the terminal's active grid — it's a
+          fixed-size screen, not itself scrollable, so overshoot doesn't
+          create scrollable space, it silently clips whatever's in the
+          bottom row(s) off-screen with no way to reach it. Switched to
+          rounding *down* so the whole active grid always fits.
+        - Native WebView pinch-zoom/pan (`setSupportZoom`,
+          `builtInZoomControls`, `useWideViewPort`) had been enabled to
+          help navigate the wider-than-phone terminal. That was the wrong
+          mechanism — it captures single-finger drag gestures for the
+          WebView's own page panning, starving xterm.js's internal
+          scrollback viewport of the touch events it needs, which is why
+          vertical scroll did nothing. Horizontal panning doesn't need
+          WebView-level zoom at all — plain CSS `overflow-x:auto` (already
+          in place) scrolls via ordinary touch-drag on its own. Disabled
+          the native zoom/pan settings entirely.
+
+        Verified on the emulator: a status line placed below the prompt
+        is now visible, and repeated swipe gestures accumulate to reveal
+        real scrollback (walked from the newest line back ~45 lines of
+        history that had scrolled off-screen).
   - [x] No way to send Tab from the phone (e.g. to accept an autocomplete
         suggestion) — the existing quick-reply buttons and text field
         always append Enter, which Tab must never get. Added a `raw_input`
