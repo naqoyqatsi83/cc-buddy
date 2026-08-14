@@ -5,13 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
   <link rel="stylesheet" href="xterm.css" />
   <style>
-    html, body { margin: 0; padding: 0; background: #0d0d0d; height: 100%; }
-    #term { height: 100%; }
+    html, body { margin: 0; padding: 0; background: #0d0d0d; height: 100%; width: 100%; overflow: hidden; }
+    #term { height: 100%; width: 100%; box-sizing: border-box; }
   </style>
 </head>
 <body>
   <div id="term"></div>
   <script src="xterm.js"></script>
+  <script src="xterm-addon-fit.js"></script>
   <script>
     var term = new Terminal({
       convertEol: true,
@@ -21,7 +22,15 @@
       disableStdin: true,
       scrollback: 5000
     });
+    // Without this the terminal keeps xterm's default 80x24 cell grid
+    // regardless of the WebView's actual width, so on a narrower phone
+    // screen long lines just get clipped at the right edge instead of
+    // the terminal re-flowing to fit — verified broken without it.
+    var fitAddon = new FitAddon.FitAddon();
+    term.loadAddon(fitAddon);
     term.open(document.getElementById("term"));
+    fitAddon.fit();
+    window.addEventListener("resize", function () { fitAddon.fit(); });
 
     // Called from Android via evaluateJavascript(); base64 avoids any
     // escaping headaches with control chars / ANSI sequences in raw PTY
