@@ -7,46 +7,52 @@ const { Terminal } = pkg;
  * lazygit) and manages its own scroll/expand state inside the process —
  * it does not use the terminal's native scrollback, so there is no
  * "history buffer" a remote mirror can read directly. The PC and phone
- * were therefore sharing exactly one live, in-place-redrawing view: the
- * phone could not scroll independently, and scrolling on the PC visibly
- * redrew the phone too.
+ * were therefore sharing exactly one live, in-place-redrawing view.
  *
  * This runs a second, headless instance of the *same terminal emulator*
  * (xterm's own headless build) fed the identical PTY byte stream, purely
  * to get an accurate parse of the redraws (cursor moves, DECSTBM regions,
  * clears) — the same parsing a real terminal does.
  *
- * The first version of this tried to detect "history" by watching for
- * lines that scroll off the top via genuine linefeeds (xterm's own
- * scrollback growing). That never fired against the real Claude Code TUI:
- * it turns out even *its own* internal scrolling (paging through a long
- * tool result, for instance) redraws the same fixed rows via cursor
- * addressing rather than emitting linefeeds — so nothing ever "scrolled
- * off" in the sense the old code was watching for, and history stayed
- * permanently empty against real usage despite working fine in synthetic
- * tests built on plain `printf`.
+ * Two earlier versions of this got it wrong:
+ * - Watching for genuine linefeed-based scrollback growth never fired
+ *   against real Claude Code output — it turns out even its own internal
+ *   scrolling redraws the same fixed rows via cursor addressing rather
+ *   than emitting linefeeds.
+ * - Periodic full-active-screen snapshots (debounced, with scrollback set
+ *   to 0) worked for redraw-based changes, but silently discarded
+ *   anything that scrolled off the active screen *during* a burst — with
+ *   zero scrollback, once a line scrolls past row 0 of the active screen
+ *   it's gone forever, and the debounce only captures whatever's left in
+ *   the final settled state. Against a real, multi-step Claude Code
+ *   response (several tool calls, longer output) this lost most of the
+ *   actual content, capturing only the last couple of screens.
  *
- * This version instead takes a periodic snapshot of the whole active
- * screen once output settles (debounced), and appends it to the
- * transcript whenever it differs from the last snapshot. That captures
- * every distinct screen the user was ever shown — regardless of whether
- * it arrived via linefeeds or via the app's own redraw-based paging —
- * which is what "independent, freely-scrollable history" actually needs
- * to mean here. Re-viewing already-captured content (e.g. paging back up
- * within the PC's own view) can re-append a duplicate block; that's an
- * acceptable trade-off for actually capturing real content at all.
+ * This version gives the shadow terminal a large scrollback (so nothing
+ * is ever discarded) and, on each debounced capture:
+ *   1. treats any line that has now permanently scrolled off the active
+ *      screen (buffer index below `length - rows`) as safe to append
+ *      exactly once, verbatim — it can never change again;
+ *   2. diffs the *current* active screen (the last `rows` lines, which
+ *      can still be redrawn in place) against the last captured active
+ *      screen, appending only the changed suffix — this is what catches
+ *      a status line ticking without re-sending the whole screen.
+ * A capture is also forced at least every 2s even under continuous
+ * output, so a long unbroken burst doesn't delay bucket (1) indefinitely.
  */
 export class ShadowTerminal {
   private term: TerminalType;
-  private lastLines: string[] = [];
+  private capturedBoundary = 0; // buffer index up to which lines are already permanently captured
+  private lastActiveLines: string[] = [];
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private maxWaitTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     cols: number,
     rows: number,
     private onAppend: (lines: string[]) => void
   ) {
-    this.term = new Terminal({ cols, rows, scrollback: 0, allowProposedApi: true });
+    this.term = new Terminal({ cols, rows, scrollback: 100_000, allowProposedApi: true });
   }
 
   resize(cols: number, rows: number) {
@@ -57,35 +63,55 @@ export class ShadowTerminal {
     this.term.write(chunk);
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
     this.debounceTimer = setTimeout(() => this.captureSnapshot(), 500);
+    if (!this.maxWaitTimer) {
+      this.maxWaitTimer = setTimeout(() => this.captureSnapshot(), 2000);
+    }
   }
 
   private captureSnapshot() {
-    this.debounceTimer = null;
-    const buf = this.term.buffer.active;
-    const lines: string[] = [];
-    for (let i = 0; i < this.term.rows; i++) {
-      const line = buf.getLine(i);
-      lines.push(line ? line.translateToString(true) : "");
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
     }
-    // Trim trailing blank rows (the screen usually isn't fully packed) so
-    // near-empty frames don't get padded out with blank lines forever.
-    while (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
-    if (lines.length === 0) return;
+    if (this.maxWaitTimer) {
+      clearTimeout(this.maxWaitTimer);
+      this.maxWaitTimer = null;
+    }
 
-    // Only append the lines that actually changed from the last capture —
-    // find the first row that differs (e.g. everything above a status
-    // line that just ticked its context percentage is identical) and only
-    // send from there. Appending the *entire* screen on every capture
-    // (the first version of this) buried History in near-duplicate
-    // full-screen dumps every time something as small as a status line
-    // changed, which is what made it confusing to read.
-    let firstDiff = 0;
-    const minLen = Math.min(lines.length, this.lastLines.length);
-    while (firstDiff < minLen && lines[firstDiff] === this.lastLines[firstDiff]) firstDiff++;
-    if (firstDiff === lines.length && lines.length === this.lastLines.length) {
-      return; // identical to last capture
+    const buf = this.term.buffer.active;
+    const total = buf.length;
+    const rows = this.term.rows;
+    const permanentBoundary = Math.max(0, total - rows);
+    const appended: string[] = [];
+
+    // 1) Lines that have permanently scrolled off the active screen since
+    // the last capture — safe to append exactly once, verbatim.
+    if (permanentBoundary > this.capturedBoundary) {
+      for (let i = this.capturedBoundary; i < permanentBoundary; i++) {
+        const line = buf.getLine(i);
+        appended.push(line ? line.translateToString(true) : "");
+      }
+      this.capturedBoundary = permanentBoundary;
     }
-    this.lastLines = lines;
-    this.onAppend(lines.slice(firstDiff));
+
+    // 2) The current active screen — still redrawable in place — diffed
+    // against the last capture so only the changed suffix is appended.
+    const activeLines: string[] = [];
+    for (let i = permanentBoundary; i < total; i++) {
+      const line = buf.getLine(i);
+      activeLines.push(line ? line.translateToString(true) : "");
+    }
+    while (activeLines.length > 0 && activeLines[activeLines.length - 1] === "") activeLines.pop();
+
+    let firstDiff = 0;
+    const minLen = Math.min(activeLines.length, this.lastActiveLines.length);
+    while (firstDiff < minLen && activeLines[firstDiff] === this.lastActiveLines[firstDiff]) firstDiff++;
+    const activeChanged = !(firstDiff === activeLines.length && activeLines.length === this.lastActiveLines.length);
+    if (activeChanged) {
+      appended.push(...activeLines.slice(firstDiff));
+      this.lastActiveLines = activeLines;
+    }
+
+    if (appended.length > 0) this.onAppend(appended);
   }
 }
