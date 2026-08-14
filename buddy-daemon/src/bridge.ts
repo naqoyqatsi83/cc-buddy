@@ -26,6 +26,18 @@ export function attachBridge(session: BuddySession, peerId: string, ws: WebSocke
   sendResize();
   const unsubscribeResize = session.onResize(sendResize);
 
+  // Full history so far (see ShadowTerminal), sent once up front so the
+  // phone's independent scrollback pane starts complete instead of empty
+  // — then just the new lines as they're captured.
+  if (ws.readyState === WebSocket.OPEN && session.transcript.length > 0) {
+    ws.send(JSON.stringify({ type: "transcript_init", lines: session.transcript }));
+  }
+  const unsubscribeTranscript = session.onTranscriptAppend((lines) => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "transcript_append", lines }));
+    }
+  });
+
   const unsubscribe = session.onData((chunk) => {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: "pty_data", data: chunk }));
@@ -51,6 +63,7 @@ export function attachBridge(session: BuddySession, peerId: string, ws: WebSocke
   const cleanup = () => {
     unsubscribe();
     unsubscribeResize();
+    unsubscribeTranscript();
     activeSockets.delete(peerId);
     const peer = session.info.peers.find((p) => p.id === peerId);
     if (peer) peer.connected = false;

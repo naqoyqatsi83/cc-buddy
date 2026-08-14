@@ -71,11 +71,27 @@
     // extra scrollable space, it silently clips the bottom row(s) of the
     // active screen (e.g. a status line below the prompt) off-screen with
     // no way to reach them.
-    function resizeTerm(cols, rows) {
-      var fontSize = Math.floor(window.innerHeight / (rows * ROW_HEIGHT_FACTOR));
+    // Track the last known PTY size/container height so either input
+    // changing can recompute font size independently.
+    var lastCols = null, lastRows = null, lastHeightPx = null;
+
+    function applyFontSizeForCurrentHeight() {
+      if (lastRows == null) return;
+      // Prefer the real pixel height Android measured for this WebView's
+      // Compose-allocated slot (see setContainerHeightPx below) over
+      // window.innerHeight: relying on window.innerHeight here previously
+      // caused the active grid to be sized for the wrong height (it
+      // doesn't reliably reflect the real Compose-measured height,
+      // especially right after a layout change) — the *active* screen's
+      // overflow rows were then silently clipped, since only true
+      // scrollback (content that scrolled off via linefeeds) is
+      // scrollable, not an active grid that's simply too tall for its
+      // container.
+      var heightPx = lastHeightPx != null ? lastHeightPx : window.innerHeight;
+      var fontSize = Math.floor(heightPx / (lastRows * ROW_HEIGHT_FACTOR));
       fontSize = Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, fontSize));
       term.options.fontSize = fontSize;
-      term.resize(cols, rows);
+      term.resize(lastCols, lastRows);
       // term.resize() can itself perturb the scroll position. xterm only
       // auto-follows new output if the viewport was already pinned to the
       // bottom, so any unintended scroll here would silently freeze the
@@ -83,6 +99,23 @@
       // visible viewport stops advancing) even though nothing is broken.
       term.scrollToBottom();
     }
+
+    function resizeTerm(cols, rows) {
+      lastCols = cols;
+      lastRows = rows;
+      applyFontSizeForCurrentHeight();
+    }
+
+    // Called from Android (via Modifier.onSizeChanged on the WebView's
+    // Compose slot) whenever its real measured pixel height changes —
+    // e.g. this app's "Live" pane resizing relative to the History pane
+    // above it. This is the authoritative height; window.innerHeight is
+    // only a fallback for before the first measurement arrives.
+    function setContainerHeightPx(px) {
+      lastHeightPx = px;
+      applyFontSizeForCurrentHeight();
+    }
+    window.addEventListener("resize", applyFontSizeForCurrentHeight);
 
     // Called from Android via evaluateJavascript(); base64 avoids any
     // escaping headaches with control chars / ANSI sequences in raw PTY
@@ -103,6 +136,16 @@
 
     function clearTerminal() {
       term.reset();
+    }
+
+    // Driven explicitly from Android's own GestureDetector instead of
+    // relying on the WebView's native touch-to-DOM-scroll handling of
+    // xterm's internal viewport — that path proved unreliable on real
+    // devices (worked in the emulator's WebView, did nothing at all on a
+    // real Galaxy A54's). scrollLines is xterm's own public API: positive
+    // scrolls toward the bottom/newest, negative toward the top/oldest.
+    function scrollLines(n) {
+      term.scrollLines(n);
     }
   </script>
 </body>

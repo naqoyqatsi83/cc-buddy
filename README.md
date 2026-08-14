@@ -175,6 +175,79 @@ Build order (from the spec) so far:
         is now visible, and repeated swipe gestures accumulate to reveal
         real scrollback (walked from the newest line back ~45 lines of
         history that had scrolled off-screen).
+
+        Real-device testing (a Galaxy A54) showed emulator verification
+        isn't a reliable substitute: vertical scroll worked in the
+        emulator's WebView but did nothing at all on the real device, and
+        zoom being disabled was reported as a regression rather than a fix.
+        Root cause for the scroll gap: relying on the WebView's native
+        touch-to-DOM-scroll handling of xterm's own internal scrollback
+        viewport is inconsistent across WebView versions. Replaced with an
+        explicit `GestureDetector` on the Android side that calls xterm's
+        own `scrollLines()` API directly for vertical drags, leaving
+        horizontal drags and pinch-zoom (re-enabled) to native handling —
+        decoupled from whatever the WebView's internal scroll dispatch
+        does or doesn't do.
+
+  - [x] Independent phone-side scroll/expand (`buddy-cc-android-pairing-spec.md`
+        follow-up, not originally scoped): the user's real expectation
+        turned out to be that the phone should have its own scrollable
+        view of everything ever shown, decoupled from the PC — not a pure
+        1:1 mirror. Investigation revealed *why* 1:1 mirroring is what we
+        had: Claude Code's TUI (like btop/k9s/lazygit) renders into a
+        fixed-size screen and manages its own scroll/expand state inside
+        the process itself, redrawing via cursor addressing rather than
+        the terminal's native scrollback — so PC and phone were sharing
+        exactly one live, in-place-redrawing view; there was no
+        independent buffer for the phone to scroll into, and PC-side
+        scrolling visibly redrew the phone too.
+
+        Added a genuinely independent second view: the daemon now runs a
+        second, headless instance of the *same terminal emulator*
+        (`@xterm/headless`, in `buddy-daemon/src/shadowTerminal.ts`) fed
+        the identical PTY byte stream, and periodically (debounced 500ms
+        after output settles) snapshots its whole active screen, appending
+        it to a growing transcript whenever it differs from the last
+        snapshot — capturing every distinct screen the user was ever shown
+        regardless of whether it arrived via linefeeds or the app's own
+        redraw-based paging. (An earlier version tried to detect "history"
+        by watching for genuine linefeed-based scrollback growth, on the
+        theory that real terminal apps mostly behave like a plain shell;
+        that never fired at all against actual Claude Code output, only
+        against synthetic `printf`-based test scripts — the debounced
+        snapshot approach was needed once it became clear Claude Code
+        doesn't rely on linefeed-based scrolling for its own view either.)
+        The full transcript is sent once on pairing (`transcript_init`)
+        and appended to live (`transcript_append`); the phone renders it
+        as a separate, plain-text, natively-scrollable pane (Compose
+        `LazyColumn`, no WebView/xterm involved) above the existing 1:1
+        "Live" mirror, which keeps showing the PC's current screen exactly
+        as before — genuinely shared live state that can't be decoupled,
+        now clearly labeled as such instead of being confused with
+        history.
+
+        This surfaced a real, separate rendering bug while testing against
+        an unusually tall real terminal (86 rows — much taller than
+        anything tested before): the active grid's font-size math assumed
+        `window.innerHeight` reliably reflected the WebView's actual
+        Compose-allocated height, and separately assumed Compose's
+        `onSizeChanged` reports CSS pixels — neither held (the former
+        didn't track Compose layout changes; the latter reports raw
+        physical pixels, ~2.75x too large on this device's density,
+        uncorrected). Together these could size the font for an area far
+        bigger than what the WebView could actually show, silently
+        clipping the bottom of the active grid (statusline/prompt) with no
+        scrollback mechanism able to reach it (only genuine linefeed
+        scrollback is scrollable; an active grid that's simply too tall
+        for its container is not). A same-day follow-on attempt to also
+        fix wasted blank space for short/sparse sessions (sizing to the
+        cursor's row instead of the full grid) caused a full regression
+        — the Live pane went completely blank — for reasons not fully
+        root-caused before reverting; given a blank pane on every normal
+        short conversation is a worse failure mode than clipping on an
+        unusually tall, densely-packed terminal, that refinement was
+        reverted and is left as a known follow-up rather than shipped
+        half-verified.
   - [x] No way to send Tab from the phone (e.g. to accept an autocomplete
         suggestion) — the existing quick-reply buttons and text field
         always append Enter, which Tab must never get. Added a `raw_input`

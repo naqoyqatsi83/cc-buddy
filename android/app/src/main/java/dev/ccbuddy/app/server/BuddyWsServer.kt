@@ -21,9 +21,13 @@ import io.ktor.websocket.Frame
 import io.ktor.websocket.close
 import io.ktor.websocket.readText
 import kotlinx.coroutines.CompletableDeferred
+import org.json.JSONArray
 import org.json.JSONObject
 import java.security.SecureRandom
 import java.util.UUID
+
+private fun JSONArray?.toStringList(): List<String> =
+    this?.let { arr -> (0 until arr.length()).map { arr.optString(it) } } ?: emptyList()
 
 /**
  * The phone's WS server (Component 3 in the spec): the daemon dials into
@@ -80,6 +84,16 @@ class BuddyWsServer(
                             "resize" -> {
                                 pairedPeerId?.let {
                                     terminalBridge.updateSize(it, msg.optInt("cols"), msg.optInt("rows"))
+                                }
+                            }
+                            "transcript_init" -> {
+                                pairedPeerId?.let {
+                                    terminalBridge.setTranscript(it, msg.optJSONArray("lines").toStringList())
+                                }
+                            }
+                            "transcript_append" -> {
+                                pairedPeerId?.let {
+                                    terminalBridge.appendTranscript(it, msg.optJSONArray("lines").toStringList())
                                 }
                             }
                             "notification" -> {

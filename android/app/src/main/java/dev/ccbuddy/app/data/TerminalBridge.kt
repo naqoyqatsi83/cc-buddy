@@ -30,6 +30,12 @@ class TerminalBridge {
         // absolute cursor positioning sized for its own terminal, so a
         // differently-sized mirror renders garbled.
         val size: MutableStateFlow<TerminalSize?> = MutableStateFlow(null),
+        // Growing, append-only history captured daemon-side from a headless
+        // shadow terminal (see buddy-daemon/src/shadowTerminal.ts) — lines
+        // that have permanently scrolled off Claude Code's alt-screen and
+        // can never change again. Rendered as its own independently-
+        // scrollable pane, decoupled from the live mirror below it.
+        val transcript: MutableStateFlow<List<String>> = MutableStateFlow(emptyList()),
         // (frameType, data) -> Unit. frameType is "input" (complete reply,
         // daemon appends Enter) or "raw_input" (literal keystroke, e.g.
         // Tab — must NOT get an Enter appended).
@@ -64,12 +70,27 @@ class TerminalBridge {
         bridges[peerId]?.size?.value = TerminalSize(cols, rows)
     }
 
+    /** Replaces the whole transcript — used once for the daemon's initial full-history send. */
+    @Synchronized
+    fun setTranscript(peerId: String, lines: List<String>) {
+        bridges[peerId]?.transcript?.value = lines
+    }
+
+    /** Appends newly-captured lines — used for ongoing transcript growth. */
+    @Synchronized
+    fun appendTranscript(peerId: String, lines: List<String>) {
+        bridges[peerId]?.transcript?.update { it + lines }
+    }
+
     /** Null if this peer has no live connection right now (e.g. already disconnected). */
     fun outputFlow(peerId: String): SharedFlow<String>? = bridges[peerId]?.output
 
     /** Null if this peer has no live connection right now. Current value may
      * still be null even for a live connection if no resize has arrived yet. */
     fun sizeFlow(peerId: String): StateFlow<TerminalSize?>? = bridges[peerId]?.size
+
+    /** Null if this peer has no live connection right now. */
+    fun transcriptFlow(peerId: String): StateFlow<List<String>>? = bridges[peerId]?.transcript
 
     /** A complete reply — the daemon appends Enter (e.g. quick-reply buttons, the text field's Send). */
     suspend fun sendInput(peerId: String, text: String) {

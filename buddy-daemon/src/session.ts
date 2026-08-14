@@ -2,6 +2,7 @@ import * as pty from "node-pty";
 import { randomUUID } from "node:crypto";
 import type { IPty } from "node-pty";
 import type { SessionInfo } from "./types.js";
+import { ShadowTerminal } from "./shadowTerminal.js";
 
 export interface PtySize {
   cols: number;
@@ -18,6 +19,11 @@ export interface BuddySession {
    * cause the source's absolute cursor positioning to garble on a
    * differently-sized terminal. */
   onResize: (listener: (size: PtySize) => void) => () => void;
+  /** Full transcript captured so far (see ShadowTerminal) — sent once to a
+   * newly attaching phone so it starts with complete history. */
+  transcript: string[];
+  /** Fires with newly-appended transcript lines as they're captured. */
+  onTranscriptAppend: (listener: (lines: string[]) => void) => () => void;
 }
 
 export interface StartSessionOptions {
@@ -37,6 +43,8 @@ export function startSession(opts: StartSessionOptions): BuddySession {
   const id = randomUUID();
   const dataListeners = new Set<(chunk: string) => void>();
   const resizeListeners = new Set<(size: PtySize) => void>();
+  const transcriptListeners = new Set<(lines: string[]) => void>();
+  const transcript: string[] = [];
 
   const ptyProcess = pty.spawn(shellForPlatform(), opts.claudeArgs, {
     name: "xterm-256color",
@@ -60,15 +68,26 @@ export function startSession(opts: StartSessionOptions): BuddySession {
   const onStdin = (chunk: string) => ptyProcess.write(chunk);
   process.stdin.on("data", onStdin);
 
+  const shadow = new ShadowTerminal(
+    process.stdout.columns || 80,
+    process.stdout.rows || 24,
+    (lines) => {
+      transcript.push(...lines);
+      for (const listener of transcriptListeners) listener(lines);
+    }
+  );
+
   // PTY -> real terminal, and fan out to any attached listeners (WS bridge).
   ptyProcess.onData((chunk) => {
     process.stdout.write(chunk);
+    shadow.write(chunk);
     for (const listener of dataListeners) listener(chunk);
   });
 
   const onResize = () => {
     if (process.stdout.columns && process.stdout.rows) {
       ptyProcess.resize(process.stdout.columns, process.stdout.rows);
+      shadow.resize(process.stdout.columns, process.stdout.rows);
       const size = { cols: process.stdout.columns, rows: process.stdout.rows };
       for (const listener of resizeListeners) listener(size);
     }
@@ -104,6 +123,11 @@ export function startSession(opts: StartSessionOptions): BuddySession {
     onResize: (listener) => {
       resizeListeners.add(listener);
       return () => resizeListeners.delete(listener);
+    },
+    transcript,
+    onTranscriptAppend: (listener) => {
+      transcriptListeners.add(listener);
+      return () => transcriptListeners.delete(listener);
     },
   };
 }
