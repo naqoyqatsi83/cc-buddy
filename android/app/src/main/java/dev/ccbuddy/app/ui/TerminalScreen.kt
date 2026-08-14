@@ -302,13 +302,16 @@ private fun TerminalWebView(modifier: Modifier = Modifier, rows: Int, onReady: (
                     }
                 })
                 setOnTouchListener { _, event ->
-                    // Propagate the detector's own consumption decision:
-                    // true only when onScroll just handled a vertical-
-                    // dominant drag (see above), so it doesn't also reach
-                    // the WebView's native touch handling and potentially
-                    // double-scroll. Taps, horizontal drags and pinch-zoom
-                    // are untouched by onScroll and fall through as usual.
                     gestureDetector.onTouchEvent(event)
+                    // Never consume: taps, horizontal drags and pinch-zoom
+                    // must still reach the WebView's own handling. Trying
+                    // to have this listener consume vertical drags (return
+                    // the detector's own decision) risked WebView's native
+                    // touch handling never engaging at all for ambiguous
+                    // gestures — returning false always keeps WebView's
+                    // own handling intact and lets the GestureDetector run
+                    // in parallel regardless.
+                    false
                 }
 
                 // Only signal ready once the page (and xterm.js, and our
