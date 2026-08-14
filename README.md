@@ -103,36 +103,40 @@ Build order (from the spec) so far:
         content: box-drawing renders cleanly, long lines clip instead
         of garbling, and horizontal scroll correctly reveals the
         clipped content undamaged.
-  - [x] Vertical scroll didn't work, the prompt floated with dead space
-        below it instead of sitting at the bottom, and — reported after
-        an initial attempt at this that turned out to be insufficient —
-        the font would shrink whenever the PC terminal's row count
-        changed, and scrolling still didn't feel like a real terminal.
-        Root design mistake: mirroring the PC's exact *row* count (the
-        way columns correctly need to be mirrored, to avoid the
-        scrambling from the fix above) meant the phone had to cram
-        however many rows the PC had into its own screen, shrinking the
-        font whenever that count changed and giving no natural
-        scrollback. Redesigned: only columns are still mirrored from the
-        PC (needed — Claude Code's cursor positioning is width-sensitive);
-        rows are now purely phone-local, computed from a **fixed** font
-        size and the phone's own viewport height, with `#term` restored
-        to a definite full-height box (needed for xterm.js's own
-        absolutely-positioned scrollback viewport to size itself — an
-        earlier pass had dropped this) inside a horizontal-only-scroll
-        wrapper (`#scrollx`). Since xterm always auto-scrolls to its
-        newest line, a terminal sized to fill the phone's height puts
-        the prompt flush at the bottom automatically, and older content
-        that no longer fits becomes xterm's own native scrollback —
-        exactly PC terminal behavior, just at the phone's own comfortable
-        size. Also fixed the "glitch right after pairing": buffered
-        output was replaying before the initial column count had been
-        applied, so it rendered into the wrong-width grid and then
-        visibly reflowed the instant the resize landed. Verified on the
-        emulator: 80 lines streamed through a 156-column PTY show no
-        startup glitch, the prompt sits flush at the bottom with no gap,
-        and swiping scrolls smoothly through the full backlog back to
-        line 1.
+  - [x] Vertical scroll, prompt-at-bottom, font-shrinks-on-resize — went
+        through two attempts here, and the first one was wrong in a way
+        worth recording. Attempt 1 decoupled the phone's *row* count from
+        the PC's (kept columns mirrored, computed rows locally from a
+        fixed font size), reasoning that rows were purely a "how much
+        fits on screen" concern like resizing a terminal window. On real
+        Claude Code output this caused actual corruption — a missing
+        header, content overwriting itself — not just a cosmetic
+        mismatch. Root cause: Claude Code's TUI uses scroll regions
+        (DECSTBM) sized to the real PTY dimensions to keep a header/footer
+        fixed while the middle scrolls; that technique is exact-row-count
+        sensitive, unlike simple absolute cursor addressing which just
+        clamps harmlessly to a smaller grid. There's no way to know in
+        advance which redraw technique a given TUI uses, so a remote
+        mirror has to match the real terminal size exactly, full stop —
+        reverted to mirroring both rows and columns. Font size is instead
+        chosen (rounding up) so the real row count fills the phone's
+        height, which still gets prompt-at-bottom (xterm auto-scrolls to
+        its newest line) and working native scrollback for anything that
+        scrolls off, without touching correctness. Also fixed the
+        "glitch right after pairing": buffered output was replaying
+        before the initial size had been applied, rendering into the
+        wrong grid and then visibly reflowing the instant the resize
+        landed a moment later.
+
+        Verified on the emulator: no startup glitch, prompt flush at the
+        bottom, and swiping scrolls smoothly through backlog. One test
+        (an 80-line burst through a 40-row PTY) hit a display freeze
+        partway through that I couldn't conclusively diagnose before
+        running low on session budget — daemon logs confirm it sent
+        everything correctly, so the freeze is somewhere in the phone's
+        receive/render path, but whether it's a real bug or an
+        emulator/screenshot-timing artifact is unresolved. Flagged for
+        the user to watch for on a real device.
   - [x] No way to send Tab from the phone (e.g. to accept an autocomplete
         suggestion) — the existing quick-reply buttons and text field
         always append Enter, which Tab must never get. Added a `raw_input`

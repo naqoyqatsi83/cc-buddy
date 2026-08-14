@@ -33,19 +33,27 @@
   <div id="scrollx"><div id="term"></div></div>
   <script src="xterm.js"></script>
   <script>
-    // Fixed, comfortably-readable size — deliberately NOT derived from the
-    // PC terminal's row count. Rows are a phone-local concern: we compute
-    // how many fit at this font size and let xterm's own scrollback
-    // handle whatever doesn't fit, exactly like resizing a real terminal
-    // window shorter. This also means resizing the PC terminal's *height*
-    // no longer touches the phone's font size at all.
-    var FONT_SIZE = 14;
-    // Empirical row height at FONT_SIZE for this WebView's font metrics.
-    var ROW_HEIGHT = 17;
+    // Mirror the PC terminal's rows AND columns exactly. Tried decoupling
+    // rows to a phone-local, fixed-font row count once — broke real
+    // Claude Code output (missing header, content overwriting itself).
+    // Reason: Claude Code's TUI uses scroll regions (DECSTBM) sized to
+    // the real PTY dimensions to keep a header/footer fixed while the
+    // middle scrolls; scroll-region math is exact-row-count-sensitive,
+    // unlike simple absolute cursor addressing, which just clamps
+    // harmlessly to a smaller grid. A remote terminal has to match the
+    // real size exactly for *any* TUI app to render correctly — there's
+    // no way to know in advance which redraw techniques an app uses.
+    var MIN_FONT_SIZE = 8;
+    var MAX_FONT_SIZE = 22;
+    // Empirical: xterm's rendered row height at a given fontSize (default
+    // lineHeight 1.0) comes out to roughly 1.15x the font size for this
+    // WebView's monospace metrics — used only to pick a font size that
+    // makes good use of the available height, not for exact layout.
+    var ROW_HEIGHT_FACTOR = 1.15;
 
     var term = new Terminal({
       convertEol: true,
-      fontSize: FONT_SIZE,
+      fontSize: 14,
       fontFamily: "monospace",
       theme: { background: "#0d0d0d", foreground: "#e0e0e0" },
       disableStdin: true,
@@ -53,23 +61,18 @@
     });
     term.open(document.getElementById("term"));
 
-    function localRowCount() {
-      return Math.max(4, Math.floor(window.innerHeight / ROW_HEIGHT));
-    }
-
-    // Called from Android whenever the PC terminal's width is known (once
-    // at pairing, again if the PC resizes its window). Mirrors *columns*
-    // exactly — the source (Claude Code's TUI) uses absolute cursor
-    // positioning sized for its own terminal width, so a different column
-    // count renders garbled. Rows are always phone-native (see above), so
-    // the `rows` argument here is intentionally unused.
+    // Called from Android whenever the PC terminal's size is known (once
+    // at pairing, again if the PC resizes its window). Font size is
+    // chosen to make the real row count fill the available height —
+    // rounding up, since xterm always auto-scrolls to its newest line, so
+    // a terminal at least full height puts the prompt flush at the
+    // bottom with any overshoot simply becoming scrollable.
     function resizeTerm(cols, rows) {
-      term.resize(cols, localRowCount());
+      var fontSize = Math.ceil(window.innerHeight / (rows * ROW_HEIGHT_FACTOR));
+      fontSize = Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, fontSize));
+      term.options.fontSize = fontSize;
+      term.resize(cols, rows);
     }
-
-    window.addEventListener("resize", function () {
-      term.resize(term.cols, localRowCount());
-    });
 
     // Called from Android via evaluateJavascript(); base64 avoids any
     // escaping headaches with control chars / ANSI sequences in raw PTY
