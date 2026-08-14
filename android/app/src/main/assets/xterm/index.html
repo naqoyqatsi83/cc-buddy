@@ -2,18 +2,37 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="xterm.css" />
   <style>
-    html, body { margin: 0; padding: 0; background: #0d0d0d; height: 100%; width: 100%; overflow: hidden; }
-    #term { height: 100%; width: 100%; box-sizing: border-box; }
+    /* The terminal renders at the PC terminal's actual size (see
+       resizeTerm below), which is usually wider and/or taller than the
+       phone screen. Don't clip or force-fit it — let it overflow its
+       natural size and scroll/pinch-zoom in both directions, like
+       panning around a full-size desktop terminal. */
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #0d0d0d;
+      overflow: auto;
+    }
+    #term {
+      display: inline-block;
+    }
   </style>
 </head>
 <body>
   <div id="term"></div>
   <script src="xterm.js"></script>
-  <script src="xterm-addon-fit.js"></script>
   <script>
+    var MIN_FONT_SIZE = 8;
+    var MAX_FONT_SIZE = 22;
+    // Empirical: xterm's rendered row height for the default lineHeight
+    // (1.0) comes out to roughly 1.3x the font size for a typical
+    // monospace font — used only to pick a starting font size that makes
+    // reasonable use of the available height, not for exact layout.
+    var ROW_HEIGHT_FACTOR = 1.3;
+
     var term = new Terminal({
       convertEol: true,
       fontSize: 13,
@@ -22,15 +41,20 @@
       disableStdin: true,
       scrollback: 5000
     });
-    // Without this the terminal keeps xterm's default 80x24 cell grid
-    // regardless of the WebView's actual width, so on a narrower phone
-    // screen long lines just get clipped at the right edge instead of
-    // the terminal re-flowing to fit — verified broken without it.
-    var fitAddon = new FitAddon.FitAddon();
-    term.loadAddon(fitAddon);
     term.open(document.getElementById("term"));
-    fitAddon.fit();
-    window.addEventListener("resize", function () { fitAddon.fit(); });
+
+    // Called from Android whenever the PC terminal's size is known (once
+    // at pairing, again if the PC resizes its window). Mirrors that exact
+    // cols/rows — never reflows to the phone's width — since the source
+    // (Claude Code's TUI) uses absolute cursor positioning sized for its
+    // own terminal; a differently-sized mirror renders garbled.
+    function resizeTerm(cols, rows) {
+      var targetHeight = window.innerHeight;
+      var fontSize = Math.floor(targetHeight / (rows * ROW_HEIGHT_FACTOR));
+      fontSize = Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, fontSize));
+      term.options.fontSize = fontSize;
+      term.resize(cols, rows);
+    }
 
     // Called from Android via evaluateJavascript(); base64 avoids any
     // escaping headaches with control chars / ANSI sequences in raw PTY

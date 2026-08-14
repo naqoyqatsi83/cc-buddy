@@ -14,6 +14,18 @@ const activeSockets = new Map<string, WebSocket>();
 export function attachBridge(session: BuddySession, peerId: string, ws: WebSocket) {
   activeSockets.set(peerId, ws);
 
+  const sendResize = () => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "resize", cols: session.pty.cols, rows: session.pty.rows }));
+    }
+  };
+  // The phone must mirror the PC terminal's *exact* size — Claude Code's
+  // TUI uses absolute cursor positioning sized for that terminal, so a
+  // differently-sized mirror renders garbled. Send it once up front and
+  // again whenever the PC terminal is resized.
+  sendResize();
+  const unsubscribeResize = session.onResize(sendResize);
+
   const unsubscribe = session.onData((chunk) => {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: "pty_data", data: chunk }));
@@ -34,6 +46,7 @@ export function attachBridge(session: BuddySession, peerId: string, ws: WebSocke
 
   const cleanup = () => {
     unsubscribe();
+    unsubscribeResize();
     activeSockets.delete(peerId);
     const peer = session.info.peers.find((p) => p.id === peerId);
     if (peer) peer.connected = false;

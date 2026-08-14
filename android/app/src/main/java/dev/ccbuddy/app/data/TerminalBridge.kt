@@ -6,6 +6,8 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 
+data class TerminalSize(val cols: Int, val rows: Int)
+
 /**
  * Bridges every currently-connected paired WS session's PTY stream to the
  * Compose terminal screen — keyed by peer id, so multiple PC sessions can
@@ -23,6 +25,11 @@ class TerminalBridge {
         // each subscriber (a fresh WebView/xterm.js instance) replays it
         // in order and correctly reconstructs the visible terminal state.
         val output: MutableSharedFlow<String> = MutableSharedFlow(replay = 300, extraBufferCapacity = 4096),
+        // The PC terminal's actual size. Must be applied to xterm.js
+        // exactly (not reflowed to the phone's width) — the source uses
+        // absolute cursor positioning sized for its own terminal, so a
+        // differently-sized mirror renders garbled.
+        val size: MutableStateFlow<TerminalSize?> = MutableStateFlow(null),
         var sender: (suspend (String) -> Unit)? = null
     )
 
@@ -49,8 +56,17 @@ class TerminalBridge {
         bridges[peerId]?.output?.tryEmit(chunk)
     }
 
+    @Synchronized
+    fun updateSize(peerId: String, cols: Int, rows: Int) {
+        bridges[peerId]?.size?.value = TerminalSize(cols, rows)
+    }
+
     /** Null if this peer has no live connection right now (e.g. already disconnected). */
     fun outputFlow(peerId: String): SharedFlow<String>? = bridges[peerId]?.output
+
+    /** Null if this peer has no live connection right now. Current value may
+     * still be null even for a live connection if no resize has arrived yet. */
+    fun sizeFlow(peerId: String): StateFlow<TerminalSize?>? = bridges[peerId]?.size
 
     suspend fun sendInput(peerId: String, text: String) {
         bridges[peerId]?.sender?.invoke(text)

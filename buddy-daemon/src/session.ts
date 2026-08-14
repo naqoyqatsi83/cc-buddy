@@ -3,11 +3,21 @@ import { randomUUID } from "node:crypto";
 import type { IPty } from "node-pty";
 import type { SessionInfo } from "./types.js";
 
+export interface PtySize {
+  cols: number;
+  rows: number;
+}
+
 export interface BuddySession {
   info: SessionInfo;
   pty: IPty;
   /** Raw PTY output subscribers (control API / WS bridge attach here later). */
   onData: (listener: (chunk: string) => void) => () => void;
+  /** Fires whenever the real PC terminal (and thus the PTY) is resized, so
+   * the phone's mirror can be kept the same size — mismatched dimensions
+   * cause the source's absolute cursor positioning to garble on a
+   * differently-sized terminal. */
+  onResize: (listener: (size: PtySize) => void) => () => void;
 }
 
 export interface StartSessionOptions {
@@ -26,6 +36,7 @@ const shellForPlatform = () =>
 export function startSession(opts: StartSessionOptions): BuddySession {
   const id = randomUUID();
   const dataListeners = new Set<(chunk: string) => void>();
+  const resizeListeners = new Set<(size: PtySize) => void>();
 
   const ptyProcess = pty.spawn(shellForPlatform(), opts.claudeArgs, {
     name: "xterm-256color",
@@ -58,6 +69,8 @@ export function startSession(opts: StartSessionOptions): BuddySession {
   const onResize = () => {
     if (process.stdout.columns && process.stdout.rows) {
       ptyProcess.resize(process.stdout.columns, process.stdout.rows);
+      const size = { cols: process.stdout.columns, rows: process.stdout.rows };
+      for (const listener of resizeListeners) listener(size);
     }
   };
   process.stdout.on("resize", onResize);
@@ -87,6 +100,10 @@ export function startSession(opts: StartSessionOptions): BuddySession {
     onData: (listener) => {
       dataListeners.add(listener);
       return () => dataListeners.delete(listener);
+    },
+    onResize: (listener) => {
+      resizeListeners.add(listener);
+      return () => resizeListeners.delete(listener);
     },
   };
 }

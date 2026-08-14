@@ -85,6 +85,24 @@ Build order (from the spec) so far:
         the session list would auto-navigate them into a session they'd
         already seen instead of just updating the list quietly (fixed:
         auto-open only the very first bridge of the app's lifetime).
+- Bug fixes reported from real-device use (not part of the build order):
+  - [x] Terminal mirror garbled and wrapped instead of matching the PC
+        terminal — Claude Code's TUI uses absolute cursor positioning
+        sized for the PC's actual terminal (often 100+ columns); the
+        phone's xterm.js was auto-fitting to the phone's own (much
+        narrower) width, so the exact same bytes rendered as
+        overlapping/scrambled text at a different column count. Fixed
+        by having the daemon forward the PC terminal's real cols/rows
+        (once at pairing, again on resize) and mirroring that size
+        exactly on the phone instead of reflowing — long lines now clip
+        cleanly and the WebView allows 2D pinch-zoom/scroll to pan
+        around the full-size terminal, plus a dynamic font-size
+        heuristic to make better use of the phone's screen height.
+        Verified on the emulator with a genuine 156×40 PTY (matching a
+        real reported screenshot) piping realistic Claude Code TUI
+        content: box-drawing renders cleanly, long lines clip instead
+        of garbling, and horizontal scroll correctly reveals the
+        clipped content undamaged.
   - [ ] FCM for notifications when the app's fully backgrounded/killed —
         needs a Firebase project and a small cloud relay service, both
         requiring external account setup this environment can't do

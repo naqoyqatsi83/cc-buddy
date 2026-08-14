@@ -77,6 +77,11 @@ class BuddyWsServer(
                             "pty_data" -> {
                                 pairedPeerId?.let { terminalBridge.emitOutput(it, msg.optString("data")) }
                             }
+                            "resize" -> {
+                                pairedPeerId?.let {
+                                    terminalBridge.updateSize(it, msg.optInt("cols"), msg.optInt("rows"))
+                                }
+                            }
                             "notification" -> {
                                 hookNotifier.onClaudeNotification(
                                     msg.optString("message", "Claude needs your attention")

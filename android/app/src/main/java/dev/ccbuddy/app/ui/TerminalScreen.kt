@@ -57,6 +57,18 @@ fun TerminalScreen(
         }
     }
 
+    // Mirror the PC terminal's exact size (never reflow to the phone's
+    // width) — see TerminalBridge's size field for why.
+    LaunchedEffect(peerId, webView) {
+        val wv = webView ?: return@LaunchedEffect
+        val sizes = terminalBridge.sizeFlow(peerId) ?: return@LaunchedEffect
+        sizes.collect { size ->
+            if (size != null) {
+                wv.evaluateJavascript("resizeTerm(${size.cols}, ${size.rows})", null)
+            }
+        }
+    }
+
     fun send(text: String) {
         scope.launch { terminalBridge.sendInput(peerId, text) }
     }
@@ -119,6 +131,15 @@ private fun TerminalWebView(modifier: Modifier = Modifier, onReady: (WebView) ->
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
                 settings.javaScriptEnabled = true
+                // The terminal is no longer reflowed to fit the screen (see
+                // index.html) — it renders at the PC terminal's actual size,
+                // which is usually wider than the phone, so pinch-zoom and
+                // 2D scrolling are how you navigate it instead of wrapping.
+                settings.useWideViewPort = true
+                settings.loadWithOverviewMode = false
+                settings.setSupportZoom(true)
+                settings.builtInZoomControls = true
+                settings.displayZoomControls = false
                 // Only signal ready once the page (and xterm.js, and our
                 // writeChunkB64/clearTerminal functions) has actually
                 // finished loading — calling evaluateJavascript() any
