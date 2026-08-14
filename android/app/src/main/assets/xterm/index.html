@@ -7,10 +7,9 @@
   <style>
     /* #term gets a definite full-height box — xterm.js's own internal
        scrollback viewport is absolutely-positioned and needs a
-       definite-height ancestor to size itself, without one its vertical
-       scroll silently collapses. #scrollx handles only the *horizontal*
-       overflow (columns usually exceed the phone's width) so panning
-       sideways doesn't fight with xterm's own vertical scroll handling. */
+       definite-height ancestor to size itself. #scrollx handles only the
+       *horizontal* overflow (columns usually exceed the phone's width) so
+       panning sideways doesn't fight with xterm's own vertical scroll. */
     html, body {
       margin: 0;
       padding: 0;
@@ -33,117 +32,78 @@
   <div id="scrollx"><div id="term"></div></div>
   <script src="xterm.js"></script>
   <script>
-    // Mirror the PC terminal's rows AND columns exactly. Tried decoupling
-    // rows to a phone-local, fixed-font row count once — broke real
-    // Claude Code output (missing header, content overwriting itself).
-    // Reason: Claude Code's TUI uses scroll regions (DECSTBM) sized to
-    // the real PTY dimensions to keep a header/footer fixed while the
-    // middle scrolls; scroll-region math is exact-row-count-sensitive,
-    // unlike simple absolute cursor addressing, which just clamps
-    // harmlessly to a smaller grid. A remote terminal has to match the
-    // real size exactly for *any* TUI app to render correctly — there's
-    // no way to know in advance which redraw techniques an app uses.
-    var MIN_FONT_SIZE = 8;
-    var MAX_FONT_SIZE = 22;
-    // Empirical: xterm's rendered row height at a given fontSize (default
-    // lineHeight 1.0) comes out to roughly 1.15x the font size for this
-    // WebView's monospace metrics — used only to pick a font size that
-    // makes good use of the available height, not for exact layout.
-    var ROW_HEIGHT_FACTOR = 1.15;
-
+    // One unified view — not two panes. Earlier attempts split "history"
+    // (independent, growing) and "live" (1:1 PC mirror) into separate
+    // panes; the actual request was a single terminal-like session log,
+    // matching how a real terminal works: everything ever shown, freely
+    // scrollable, with the prompt/status flush at the bottom, exactly
+    // like PageUp/PageDown through real scrollback.
+    //
+    // This is only safely buildable because of *what* we feed it. Raw PTY
+    // bytes need cursor addressing sized to the real PTY's exact rows and
+    // cols (Claude Code's TUI uses DECSTBM scroll regions) — matching
+    // that exactly is what forced rows to mirror the PC's real (and on
+    // this user's setup, unusually tall) terminal, which is what caused
+    // most of this session's clipping/sizing bugs. The daemon's
+    // shadowTerminal.ts instead captures plain, already-rendered TEXT
+    // (diffed against the last capture) — no cursor addressing, no
+    // DECSTBM. Writing plain text with normal linefeeds into xterm is a
+    // completely different, much simpler case: it accumulates in xterm's
+    // own real scrollback like any normal terminal, at whatever font size
+    // is actually readable on the phone — rows no longer need to match
+    // the PC at all. cols still should (see resizeCols), so long lines
+    // don't wrap somewhere different than they were originally formatted
+    // for — that's what horizontal scroll is for instead.
     var term = new Terminal({
       convertEol: true,
       fontSize: 14,
       fontFamily: "monospace",
       theme: { background: "#0d0d0d", foreground: "#e0e0e0" },
       disableStdin: true,
-      scrollback: 5000
+      scrollback: 20000
     });
     term.open(document.getElementById("term"));
 
-    // Called from Android whenever the PC terminal's size is known (once
-    // at pairing, again if the PC resizes its window). Font size is
-    // chosen to make the real row count fit the available height —
-    // rounding DOWN. The active grid (rows == the real PTY's row count)
-    // is a fixed-size screen, not itself scrollable: only rows that have
-    // actually scrolled off the top become reachable scrollback. Rounding
-    // up ("overshoot") was tried first and was wrong — it doesn't create
-    // extra scrollable space, it silently clips the bottom row(s) of the
-    // active screen (e.g. a status line below the prompt) off-screen with
-    // no way to reach them.
-    // Track the last known PTY size/container height so either input
-    // changing can recompute font size independently.
-    var lastCols = null, lastRows = null, lastHeightPx = null;
+    var lastCols = null;
 
-    function applyFontSizeForCurrentHeight() {
-      if (lastRows == null) return;
-      // Prefer the real pixel height Android measured for this WebView's
-      // Compose-allocated slot (see setContainerHeightPx below) over
-      // window.innerHeight: relying on window.innerHeight here previously
-      // caused the active grid to be sized for the wrong height (it
-      // doesn't reliably reflect the real Compose-measured height,
-      // especially right after a layout change) — the *active* screen's
-      // overflow rows were then silently clipped, since only true
-      // scrollback (content that scrolled off via linefeeds) is
-      // scrollable, not an active grid that's simply too tall for its
-      // container.
-      var heightPx = lastHeightPx != null ? lastHeightPx : window.innerHeight;
-      var fontSize = Math.floor(heightPx / (lastRows * ROW_HEIGHT_FACTOR));
-      fontSize = Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, fontSize));
-      term.options.fontSize = fontSize;
-      term.resize(lastCols, lastRows);
-      // term.resize() can itself perturb the scroll position. xterm only
-      // auto-follows new output if the viewport was already pinned to the
-      // bottom, so any unintended scroll here would silently freeze the
-      // mirror mid-stream (new bytes keep arriving into the buffer but the
-      // visible viewport stops advancing) even though nothing is broken.
-      term.scrollToBottom();
-    }
-
-    function resizeTerm(cols, rows) {
+    // Called from Android whenever the PC terminal's column count is
+    // known — matching cols (not rows) keeps long captured lines from
+    // wrapping at a different width than they were originally rendered
+    // for; anything still too wide for the phone's screen is reached via
+    // #scrollx's horizontal scroll rather than wrapping.
+    function resizeCols(cols) {
+      if (cols === lastCols) return;
       lastCols = cols;
-      lastRows = rows;
-      applyFontSizeForCurrentHeight();
+      term.resize(cols, term.rows);
     }
 
-    // Called from Android (via Modifier.onSizeChanged on the WebView's
-    // Compose slot) whenever its real measured pixel height changes —
-    // e.g. this app's "Live" pane resizing relative to the History pane
-    // above it. This is the authoritative height; window.innerHeight is
-    // only a fallback for before the first measurement arrives.
-    function setContainerHeightPx(px) {
-      lastHeightPx = px;
-      applyFontSizeForCurrentHeight();
-    }
-    window.addEventListener("resize", applyFontSizeForCurrentHeight);
-
-    // Called from Android via evaluateJavascript(); base64 avoids any
-    // escaping headaches with control chars / ANSI sequences in raw PTY
-    // output.
-    function writeChunkB64(b64) {
-      // Decode to raw bytes (not a JS string) so xterm's UTF-8 decoder
-      // handles multi-byte characters correctly instead of misreading
-      // each byte as its own UTF-16 code unit.
-      var binary = atob(b64);
-      var bytes = new Uint8Array(binary.length);
-      for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-      // write() is async internally (parses on a microtask), so force the
-      // follow-tail scroll in its callback rather than right after the
-      // call — otherwise this can race the still-pending parse/render and
-      // scroll to a position that's immediately stale.
-      term.write(bytes, function () { term.scrollToBottom(); });
+    // Called from Android with newly-captured history lines (see
+    // buddy-daemon/src/shadowTerminal.ts / transcript_init/_append) —
+    // plain text, one call per line, base64-encoded the same way as the
+    // old raw-byte path to sidestep escaping issues.
+    function appendLinesB64(linesB64Json) {
+      var linesB64 = JSON.parse(linesB64Json);
+      for (var i = 0; i < linesB64.length; i++) {
+        var binary = atob(linesB64[i]);
+        var bytes = new Uint8Array(binary.length);
+        for (var j = 0; j < binary.length; j++) bytes[j] = binary.charCodeAt(j);
+        term.write(bytes);
+        term.write("\r\n");
+      }
+      term.scrollToBottom();
     }
 
     function clearTerminal() {
       term.reset();
     }
 
-    // Driven explicitly from Android's own GestureDetector instead of
+    // Driven explicitly from Android's own GestureDetector rather than
     // relying on the WebView's native touch-to-DOM-scroll handling of
-    // xterm's internal viewport — that path proved unreliable on real
-    // devices (worked in the emulator's WebView, did nothing at all on a
-    // real Galaxy A54's). scrollLines is xterm's own public API: positive
-    // scrolls toward the bottom/newest, negative toward the top/oldest.
+    // xterm's internal viewport — that path proved unreliable across
+    // devices earlier in this project (worked in an emulator, did
+    // nothing on a real device). scrollLines is xterm's own public API:
+    // positive scrolls toward the bottom/newest, negative toward the
+    // top/oldest.
     function scrollLines(n) {
       term.scrollLines(n);
     }
