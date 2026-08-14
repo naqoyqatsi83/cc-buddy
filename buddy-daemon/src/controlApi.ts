@@ -53,12 +53,12 @@ export function startControlApi(port: number, sessionRef: SessionRef): Promise<S
     res.json(session.info.peers);
   });
 
-  app.post("/sessions/:id/unpair", (req, res) => {
+  app.post("/sessions/:id/unpair", async (req, res) => {
     const session = sessionRegistry.get(req.params.id);
     if (!session) return res.status(404).json({ error: "unknown session" });
     const { peer_id } = req.body ?? {};
     if (!peer_id) return res.status(400).json({ error: "peer_id is required" });
-    const ok = unpairPeer(session, peer_id);
+    const ok = await unpairPeer(session, peer_id);
     if (!ok) return res.status(404).json({ error: "unknown peer" });
     res.json({ ok: true });
   });

@@ -63,7 +63,7 @@ export function pairWithPhone(
           port,
           token: msg.token,
           pairedAt: peer.pairedAt,
-        });
+        }).catch((err) => console.error("failed to save pairing token", err));
         session.info.peers.push(peer);
         attachBridge(session, peer.id, ws);
         resolve(peer);
@@ -81,11 +81,11 @@ export function pairWithPhone(
   });
 }
 
-export function unpairPeer(session: BuddySession, peerId: string): boolean {
+export async function unpairPeer(session: BuddySession, peerId: string): Promise<boolean> {
   const idx = session.info.peers.findIndex((p) => p.id === peerId);
   if (idx === -1) return false;
   session.info.peers.splice(idx, 1);
-  removeToken(peerId);
+  await removeToken(peerId);
   closeBridge(peerId);
   return true;
 }
