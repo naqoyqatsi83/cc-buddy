@@ -34,7 +34,16 @@ Build order (from the spec) so far:
       or the text field's Send button), daemon writes them into the PTY
       as `text + "\r"`.
 - [ ] 6. Claude Code HTTP hooks wired to push notifications.
-- [ ] 7. mDNS discovery both sides.
+- [x] 7. mDNS discovery both sides — Android advertises `_buddycc._tcp`
+      via `NsdManager`; daemon browses for it via `bonjour-service`.
+      Verified working discovery in both directions (Android → host and
+      standalone host round-trip) when nothing else on the host
+      contends for UDP 5353. Note: on a machine already running
+      `avahi-daemon` and/or `adb`'s own mDNS listener (both bind port
+      5353), the kernel delivers each multicast response to only one of
+      the competing sockets, so `/buddy-scan` can miss it non-
+      deterministically — a host-environment quirk, not a bug in this
+      code; manual `/buddy-pair <ip> <pin>` is unaffected either way.
 - [ ] 8. Tailscale (should work for free once IP pairing works).
 - [ ] 9. Phase 2: FCM, encrypted token storage hardening, multi-session UI.
 
@@ -49,9 +58,10 @@ node dist/cli.js start --cwd /path/to/your/project
 
 This should behave exactly like running `claude` directly. Once a
 `BUDDY_DAEMON_URL`/`BUDDY_SESSION_ID`-aware session is running, the
-`/buddy-*` commands work from inside it (`/buddy-scan` still reports no
-phones found — mDNS is step 7 — but `/buddy-pair <ip> <pin>` works against
-a real phone running the Android app below).
+`/buddy-*` commands work from inside it — `/buddy-scan` browses for
+phones advertising `_buddycc._tcp` (see the mDNS caveat above), and
+`/buddy-pair <ip> <pin>` always works against a real phone running the
+Android app below regardless of scan reliability.
 
 ## Try it (Android app)
 

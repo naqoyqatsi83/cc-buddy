@@ -9,6 +9,7 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import dev.ccbuddy.app.data.ActivePin
 import dev.ccbuddy.app.server.BuddyWsServer
+import dev.ccbuddy.app.server.NsdHelper
 import dev.ccbuddy.app.util.PinGenerator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,6 +27,7 @@ class BuddyForegroundService : Service() {
     private val job = Job()
     private val scope = CoroutineScope(Dispatchers.Default + job)
     private lateinit var wsServer: BuddyWsServer
+    private lateinit var nsdHelper: NsdHelper
 
     override fun onCreate() {
         super.onCreate()
@@ -36,16 +38,19 @@ class BuddyForegroundService : Service() {
             terminalBridge = app.terminalBridge,
             phoneDeviceName = { Build.MODEL ?: "Android phone" }
         )
+        nsdHelper = NsdHelper(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startForeground(FOREGROUND_NOTIFICATION_ID, buildNotification())
         wsServer.start()
+        nsdHelper.register()
         regeneratePin()
         return START_STICKY
     }
 
     override fun onDestroy() {
+        nsdHelper.unregister()
         wsServer.stop()
         job.cancel()
         super.onDestroy()
