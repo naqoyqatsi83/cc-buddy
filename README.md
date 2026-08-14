@@ -103,6 +103,26 @@ Build order (from the spec) so far:
         content: box-drawing renders cleanly, long lines clip instead
         of garbling, and horizontal scroll correctly reveals the
         clipped content undamaged.
+  - [x] Vertical scroll didn't work at all, and the prompt/status line
+        floated with dead space below it instead of sitting at the
+        screen's bottom edge — both regressions from the fix above.
+        Removing `#term`'s explicit height (to let width flow naturally
+        for the horizontal-scroll fix) also broke xterm.js's own
+        internal scrollback viewport, which is absolutely-positioned and
+        needs a definite-height ancestor to size itself at all. Fixed
+        by giving `#term` a definite full-height box again and moving
+        only the *horizontal* overflow handling to a wrapping element
+        (`#scrollx`), so xterm's native vertical scrollback and the
+        horizontal pan don't fight each other. The bottom-gap was the
+        font-size heuristic undershooting the true row height in this
+        WebView's font metrics; biased it to round up instead of down
+        (xterm always auto-scrolls to its newest line, so a terminal
+        that's at least full height puts the prompt flush at the bottom
+        with any overshoot simply becoming scrollable) and retuned the
+        row-height constant. Verified on the emulator with a 156×40 PTY
+        streaming 60+ lines: scrolling reaches all the way back to line
+        1, and the last line renders flush with the screen's bottom
+        edge with no gap.
   - [ ] FCM for notifications when the app's fully backgrounded/killed —
         needs a Firebase project and a small cloud relay service, both
         requiring external account setup this environment can't do
