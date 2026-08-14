@@ -169,8 +169,8 @@ class BuddyWsServer(
     }
 
     private fun io.ktor.server.websocket.DefaultWebSocketServerSession.attachBridge(peerId: String) {
-        terminalBridge.attach(peerId) { text ->
-            send(Frame.Text(JSONObject().put("type", "input").put("data", text).toString()))
+        terminalBridge.attach(peerId) { frameType, text ->
+            send(Frame.Text(JSONObject().put("type", frameType).put("data", text).toString()))
         }
     }
 

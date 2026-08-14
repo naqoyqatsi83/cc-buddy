@@ -5,14 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="xterm.css" />
   <style>
-    /* The terminal renders at the PC terminal's actual size (see
-       resizeTerm below), which is usually wider than the phone screen.
-       #term gets a definite full-height box — xterm.js's own internal
+    /* #term gets a definite full-height box — xterm.js's own internal
        scrollback viewport is absolutely-positioned and needs a
        definite-height ancestor to size itself, without one its vertical
        scroll silently collapses. #scrollx handles only the *horizontal*
-       overflow (the wide dimension) so panning sideways doesn't fight
-       with xterm's own vertical scroll handling. */
+       overflow (columns usually exceed the phone's width) so panning
+       sideways doesn't fight with xterm's own vertical scroll handling. */
     html, body {
       margin: 0;
       padding: 0;
@@ -35,17 +33,19 @@
   <div id="scrollx"><div id="term"></div></div>
   <script src="xterm.js"></script>
   <script>
-    var MIN_FONT_SIZE = 8;
-    var MAX_FONT_SIZE = 22;
-    // Empirical: xterm's rendered row height for the default lineHeight
-    // (1.0) comes out to roughly 1.3x the font size for a typical
-    // monospace font — used only to pick a starting font size that makes
-    // reasonable use of the available height, not for exact layout.
-    var ROW_HEIGHT_FACTOR = 1.15;
+    // Fixed, comfortably-readable size — deliberately NOT derived from the
+    // PC terminal's row count. Rows are a phone-local concern: we compute
+    // how many fit at this font size and let xterm's own scrollback
+    // handle whatever doesn't fit, exactly like resizing a real terminal
+    // window shorter. This also means resizing the PC terminal's *height*
+    // no longer touches the phone's font size at all.
+    var FONT_SIZE = 14;
+    // Empirical row height at FONT_SIZE for this WebView's font metrics.
+    var ROW_HEIGHT = 17;
 
     var term = new Terminal({
       convertEol: true,
-      fontSize: 13,
+      fontSize: FONT_SIZE,
       fontFamily: "monospace",
       theme: { background: "#0d0d0d", foreground: "#e0e0e0" },
       disableStdin: true,
@@ -53,23 +53,23 @@
     });
     term.open(document.getElementById("term"));
 
-    // Called from Android whenever the PC terminal's size is known (once
-    // at pairing, again if the PC resizes its window). Mirrors that exact
-    // cols/rows — never reflows to the phone's width — since the source
-    // (Claude Code's TUI) uses absolute cursor positioning sized for its
-    // own terminal; a differently-sized mirror renders garbled.
-    function resizeTerm(cols, rows) {
-      var targetHeight = window.innerHeight;
-      // Round UP: xterm always auto-scrolls to show its newest line, so a
-      // terminal that's at least full height puts the prompt/last line
-      // right at the screen's bottom edge, with any overshoot simply
-      // becoming vertically scrollable. Undershooting instead would leave
-      // a dead gap below the content and the prompt floating mid-screen.
-      var fontSize = Math.ceil(targetHeight / (rows * ROW_HEIGHT_FACTOR));
-      fontSize = Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, fontSize));
-      term.options.fontSize = fontSize;
-      term.resize(cols, rows);
+    function localRowCount() {
+      return Math.max(4, Math.floor(window.innerHeight / ROW_HEIGHT));
     }
+
+    // Called from Android whenever the PC terminal's width is known (once
+    // at pairing, again if the PC resizes its window). Mirrors *columns*
+    // exactly — the source (Claude Code's TUI) uses absolute cursor
+    // positioning sized for its own terminal width, so a different column
+    // count renders garbled. Rows are always phone-native (see above), so
+    // the `rows` argument here is intentionally unused.
+    function resizeTerm(cols, rows) {
+      term.resize(cols, localRowCount());
+    }
+
+    window.addEventListener("resize", function () {
+      term.resize(term.cols, localRowCount());
+    });
 
     // Called from Android via evaluateJavascript(); base64 avoids any
     // escaping headaches with control chars / ANSI sequences in raw PTY

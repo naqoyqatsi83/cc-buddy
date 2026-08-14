@@ -51,14 +51,24 @@ fun TerminalScreen(
         // one's backlog — otherwise the two peers' output visually
         // concatenates in the same xterm.js buffer.
         wv.evaluateJavascript("clearTerminal()", null)
+        // Apply whatever column width is already known *before* replaying
+        // any buffered output. Doing this the other way around — replay
+        // first, resize whenever its own collector happens to run — let
+        // buffered content render into the wrong-width grid and then
+        // visibly jump/reflow the instant the resize landed a moment
+        // later. That reflow was the "glitch right after pairing".
+        terminalBridge.sizeFlow(peerId)?.value?.let { size ->
+            wv.evaluateJavascript("resizeTerm(${size.cols}, ${size.rows})", null)
+        }
         flow.collect { chunk ->
             val b64 = Base64.encodeToString(chunk.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
             wv.evaluateJavascript("writeChunkB64('$b64')", null)
         }
     }
 
-    // Mirror the PC terminal's exact size (never reflow to the phone's
-    // width) — see TerminalBridge's size field for why.
+    // Mirror the PC terminal's column width whenever it changes later
+    // (e.g. the PC resizes its window) — the initial value was already
+    // applied above before output replay started.
     LaunchedEffect(peerId, webView) {
         val wv = webView ?: return@LaunchedEffect
         val sizes = terminalBridge.sizeFlow(peerId) ?: return@LaunchedEffect
@@ -71,6 +81,10 @@ fun TerminalScreen(
 
     fun send(text: String) {
         scope.launch { terminalBridge.sendInput(peerId, text) }
+    }
+
+    fun sendRaw(text: String) {
+        scope.launch { terminalBridge.sendRaw(peerId, text) }
     }
 
     Column(modifier = modifier.fillMaxSize()) {
@@ -95,6 +109,12 @@ fun TerminalScreen(
                 TextButton(onClick = { send(reply) }) {
                     Text(reply.ifEmpty { "⏎" })
                 }
+            }
+            // Tab must NOT submit like the replies above (no trailing
+            // Enter) — it's how you accept an autocomplete suggestion,
+            // which is a raw keystroke, not a complete answer.
+            TextButton(onClick = { sendRaw("\t") }) {
+                Text("⇥")
             }
         }
 

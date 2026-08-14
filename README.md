@@ -103,26 +103,43 @@ Build order (from the spec) so far:
         content: box-drawing renders cleanly, long lines clip instead
         of garbling, and horizontal scroll correctly reveals the
         clipped content undamaged.
-  - [x] Vertical scroll didn't work at all, and the prompt/status line
-        floated with dead space below it instead of sitting at the
-        screen's bottom edge — both regressions from the fix above.
-        Removing `#term`'s explicit height (to let width flow naturally
-        for the horizontal-scroll fix) also broke xterm.js's own
-        internal scrollback viewport, which is absolutely-positioned and
-        needs a definite-height ancestor to size itself at all. Fixed
-        by giving `#term` a definite full-height box again and moving
-        only the *horizontal* overflow handling to a wrapping element
-        (`#scrollx`), so xterm's native vertical scrollback and the
-        horizontal pan don't fight each other. The bottom-gap was the
-        font-size heuristic undershooting the true row height in this
-        WebView's font metrics; biased it to round up instead of down
-        (xterm always auto-scrolls to its newest line, so a terminal
-        that's at least full height puts the prompt flush at the bottom
-        with any overshoot simply becoming scrollable) and retuned the
-        row-height constant. Verified on the emulator with a 156×40 PTY
-        streaming 60+ lines: scrolling reaches all the way back to line
-        1, and the last line renders flush with the screen's bottom
-        edge with no gap.
+  - [x] Vertical scroll didn't work, the prompt floated with dead space
+        below it instead of sitting at the bottom, and — reported after
+        an initial attempt at this that turned out to be insufficient —
+        the font would shrink whenever the PC terminal's row count
+        changed, and scrolling still didn't feel like a real terminal.
+        Root design mistake: mirroring the PC's exact *row* count (the
+        way columns correctly need to be mirrored, to avoid the
+        scrambling from the fix above) meant the phone had to cram
+        however many rows the PC had into its own screen, shrinking the
+        font whenever that count changed and giving no natural
+        scrollback. Redesigned: only columns are still mirrored from the
+        PC (needed — Claude Code's cursor positioning is width-sensitive);
+        rows are now purely phone-local, computed from a **fixed** font
+        size and the phone's own viewport height, with `#term` restored
+        to a definite full-height box (needed for xterm.js's own
+        absolutely-positioned scrollback viewport to size itself — an
+        earlier pass had dropped this) inside a horizontal-only-scroll
+        wrapper (`#scrollx`). Since xterm always auto-scrolls to its
+        newest line, a terminal sized to fill the phone's height puts
+        the prompt flush at the bottom automatically, and older content
+        that no longer fits becomes xterm's own native scrollback —
+        exactly PC terminal behavior, just at the phone's own comfortable
+        size. Also fixed the "glitch right after pairing": buffered
+        output was replaying before the initial column count had been
+        applied, so it rendered into the wrong-width grid and then
+        visibly reflowed the instant the resize landed. Verified on the
+        emulator: 80 lines streamed through a 156-column PTY show no
+        startup glitch, the prompt sits flush at the bottom with no gap,
+        and swiping scrolls smoothly through the full backlog back to
+        line 1.
+  - [x] No way to send Tab from the phone (e.g. to accept an autocomplete
+        suggestion) — the existing quick-reply buttons and text field
+        always append Enter, which Tab must never get. Added a `raw_input`
+        message type alongside the existing `input` type (daemon writes
+        it to the PTY with no trailing `\r`) and a Tab (⇥) button that
+        uses it. Verified the daemon received and correctly wrote a bare
+        tab byte to the PTY.
   - [ ] FCM for notifications when the app's fully backgrounded/killed —
         needs a Firebase project and a small cloud relay service, both
         requiring external account setup this environment can't do

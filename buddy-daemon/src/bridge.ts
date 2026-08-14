@@ -41,6 +41,10 @@ export function attachBridge(session: BuddySession, peerId: string, ws: WebSocke
     }
     if (msg.type === "input" && typeof msg.data === "string") {
       session.pty.write(msg.data + "\r");
+    } else if (msg.type === "raw_input" && typeof msg.data === "string") {
+      // A literal keystroke (e.g. Tab, for autocomplete) — must NOT get
+      // an Enter appended, unlike a complete reply.
+      session.pty.write(msg.data);
     }
   });
 

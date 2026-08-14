@@ -30,7 +30,10 @@ class TerminalBridge {
         // absolute cursor positioning sized for its own terminal, so a
         // differently-sized mirror renders garbled.
         val size: MutableStateFlow<TerminalSize?> = MutableStateFlow(null),
-        var sender: (suspend (String) -> Unit)? = null
+        // (frameType, data) -> Unit. frameType is "input" (complete reply,
+        // daemon appends Enter) or "raw_input" (literal keystroke, e.g.
+        // Tab — must NOT get an Enter appended).
+        var sender: (suspend (String, String) -> Unit)? = null
     )
 
     private val bridges = mutableMapOf<String, PeerBridge>()
@@ -40,7 +43,7 @@ class TerminalBridge {
     val activePeerIds: StateFlow<Set<String>> = _activePeerIds
 
     @Synchronized
-    fun attach(peerId: String, sender: suspend (String) -> Unit) {
+    fun attach(peerId: String, sender: suspend (String, String) -> Unit) {
         bridges.getOrPut(peerId) { PeerBridge() }.sender = sender
         _activePeerIds.update { it + peerId }
     }
@@ -68,7 +71,13 @@ class TerminalBridge {
      * still be null even for a live connection if no resize has arrived yet. */
     fun sizeFlow(peerId: String): StateFlow<TerminalSize?>? = bridges[peerId]?.size
 
+    /** A complete reply — the daemon appends Enter (e.g. quick-reply buttons, the text field's Send). */
     suspend fun sendInput(peerId: String, text: String) {
-        bridges[peerId]?.sender?.invoke(text)
+        bridges[peerId]?.sender?.invoke("input", text)
+    }
+
+    /** A literal keystroke with no Enter appended — e.g. Tab for autocomplete. */
+    suspend fun sendRaw(peerId: String, text: String) {
+        bridges[peerId]?.sender?.invoke("raw_input", text)
     }
 }
