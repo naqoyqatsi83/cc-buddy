@@ -129,14 +129,24 @@ Build order (from the spec) so far:
         landed a moment later.
 
         Verified on the emulator: no startup glitch, prompt flush at the
-        bottom, and swiping scrolls smoothly through backlog. One test
-        (an 80-line burst through a 40-row PTY) hit a display freeze
-        partway through that I couldn't conclusively diagnose before
-        running low on session budget — daemon logs confirm it sent
-        everything correctly, so the freeze is somewhere in the phone's
-        receive/render path, but whether it's a real bug or an
-        emulator/screenshot-timing artifact is unresolved. Flagged for
-        the user to watch for on a real device.
+        bottom, and swiping scrolls smoothly through backlog.
+
+        A follow-up bug also surfaced and got fixed: bursts of output
+        could silently stop advancing on screen partway through, even
+        though the daemon logs confirmed it sent everything (including
+        the trailing prompt). Root cause: xterm.js only auto-follows new
+        output while the viewport is already pinned to the bottom — it
+        won't yank the view away if it thinks the user scrolled up, which
+        is normally the right call, but `resizeTerm()`'s `term.resize()`
+        (called again by the size-flow subscriber, potentially mid-burst)
+        can itself perturb the scroll position, at which point xterm
+        stops following and every later chunk lands off-screen. Fixed by
+        explicitly forcing `term.scrollToBottom()` after every resize and
+        after every write's parse callback (not synchronously after
+        `term.write()`, which is async internally and would race the
+        still-pending render). Re-verified the same freeze scenario twice
+        on the emulator, including the original box-drawing-header
+        reproduction — content now reaches the final prompt both times.
   - [x] No way to send Tab from the phone (e.g. to accept an autocomplete
         suggestion) — the existing quick-reply buttons and text field
         always append Enter, which Tab must never get. Added a `raw_input`

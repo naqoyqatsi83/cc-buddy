@@ -72,6 +72,12 @@
       fontSize = Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, fontSize));
       term.options.fontSize = fontSize;
       term.resize(cols, rows);
+      // term.resize() can itself perturb the scroll position. xterm only
+      // auto-follows new output if the viewport was already pinned to the
+      // bottom, so any unintended scroll here would silently freeze the
+      // mirror mid-stream (new bytes keep arriving into the buffer but the
+      // visible viewport stops advancing) even though nothing is broken.
+      term.scrollToBottom();
     }
 
     // Called from Android via evaluateJavascript(); base64 avoids any
@@ -84,7 +90,11 @@
       var binary = atob(b64);
       var bytes = new Uint8Array(binary.length);
       for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-      term.write(bytes);
+      // write() is async internally (parses on a microtask), so force the
+      // follow-tail scroll in its callback rather than right after the
+      // call — otherwise this can race the still-pending parse/render and
+      // scroll to a position that's immediately stale.
+      term.write(bytes, function () { term.scrollToBottom(); });
     }
 
     function clearTerminal() {
