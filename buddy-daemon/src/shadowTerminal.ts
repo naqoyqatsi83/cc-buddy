@@ -35,6 +35,16 @@ function isPureRepeatOf(block: string[], line: string | null): boolean {
   return block.every((l) => l === line);
 }
 
+// The footer is meant to be just the prompt box + status line — a
+// handful of rows — not "everything still within the PC's real terminal
+// height". Tying the split to the PC's actual row count (as an earlier
+// version did) meant a moderate/short session left almost everything in
+// the footer (scrollable in a cramped strip) with history empty above it,
+// since nothing had actually scrolled off an 86-row PC screen yet. A
+// fixed small tail size instead means most content flows into scrollable
+// history quickly, regardless of how tall the real PC terminal is.
+const TAIL_MAX_LINES = 6;
+
 export class ShadowTerminal {
   private term: TerminalType;
   private capturedBoundary = 0; // buffer index up to which history is already sent
@@ -83,20 +93,27 @@ export class ShadowTerminal {
     }
 
     const buf = this.term.buffer.active;
-    const total = buf.length;
-    const rows = this.term.rows;
-    const permanentBoundary = Math.max(0, total - rows);
+    // buf.length always reports at least `rows` (it pads out to the full
+    // active-screen size even when most of it is blank), so find the
+    // real last non-blank row first — otherwise a short/moderate session
+    // pushes a wall of blank padding into both history and the tail.
+    let effectiveTotal = buf.length;
+    while (effectiveTotal > 0) {
+      const line = buf.getLine(effectiveTotal - 1);
+      if ((line ? line.translateToString(true) : "") !== "") break;
+      effectiveTotal--;
+    }
+    const boundary = Math.max(this.capturedBoundary, effectiveTotal - TAIL_MAX_LINES);
 
-    // History: lines that have permanently scrolled off the active
-    // screen since the last capture — safe to append exactly once,
-    // verbatim, unless it's an idle-refresh repeat.
-    if (permanentBoundary > this.capturedBoundary) {
+    // History: everything up to the last TAIL_MAX_LINES rows — safe to
+    // append exactly once, verbatim, unless it's an idle-refresh repeat.
+    if (boundary > this.capturedBoundary) {
       const block: string[] = [];
-      for (let i = this.capturedBoundary; i < permanentBoundary; i++) {
+      for (let i = this.capturedBoundary; i < boundary; i++) {
         const line = buf.getLine(i);
         block.push(line ? line.translateToString(true) : "");
       }
-      this.capturedBoundary = permanentBoundary;
+      this.capturedBoundary = boundary;
       if (!sameLines(block, this.lastAppendedBlock) && !isPureRepeatOf(block, this.lastAppendedLine)) {
         this.onHistoryAppend(block);
         this.lastAppendedBlock = block;
@@ -104,16 +121,14 @@ export class ShadowTerminal {
       }
     }
 
-    // Tail: the current active screen — still redrawable in place. This
-    // is a wholesale replace (the footer shows whatever it is right now),
-    // not an append, so no dedup needed — sending the same content twice
-    // is harmless.
+    // Tail: the last few rows — prompt + status, still redrawable in
+    // place. This is a wholesale replace (the footer shows whatever it
+    // is right now), not an append, so no dedup needed.
     const tail: string[] = [];
-    for (let i = permanentBoundary; i < total; i++) {
+    for (let i = boundary; i < effectiveTotal; i++) {
       const line = buf.getLine(i);
       tail.push(line ? line.translateToString(true) : "");
     }
-    while (tail.length > 0 && tail[tail.length - 1] === "") tail.pop();
     if (!sameLines(tail, this.lastTail)) {
       this.onTailUpdate(tail);
       this.lastTail = tail;
