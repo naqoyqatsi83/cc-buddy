@@ -41,20 +41,38 @@ class MainActivity : ComponentActivity() {
                     val activePin by app.pairingState.activePin.collectAsState()
                     val pendingRequest by app.pairingState.pendingRequest.collectAsState()
                     val peers by app.peerRepository.peers.collectAsState()
-                    val activeBridgePeerId by app.terminalBridge.activePeerId.collectAsState()
+                    val activeBridgePeerIds by app.terminalBridge.activePeerIds.collectAsState()
                     var localAddresses by remember { mutableStateOf(NetworkUtils.localAddresses()) }
-                    var viewingTerminal by remember { mutableStateOf(false) }
+                    // Which peer's terminal is on screen, if any — multiple can be
+                    // bridged at once (Phase 2: one phone, several PC sessions), so
+                    // this is a specific peer id, not just a boolean.
+                    var viewingPeerId by remember { mutableStateOf<String?>(null) }
+                    // Only the very first bridge of the app's lifetime auto-opens the
+                    // terminal (first-pairing convenience). Without this, returning to
+                    // the list to pair a second session and having it connect would
+                    // yank the view back into whichever session happens to be first in
+                    // the set — including one the user already saw and deliberately
+                    // backed out of — instead of just updating the list quietly.
+                    var hasAutoOpened by remember { mutableStateOf(false) }
 
-                    // Jump to the terminal automatically the moment a bridge attaches
-                    // (fresh pairing, or a reconnect from an already-paired daemon).
-                    LaunchedEffect(activeBridgePeerId) {
-                        if (activeBridgePeerId != null) viewingTerminal = true
+                    LaunchedEffect(activeBridgePeerIds) {
+                        if (!hasAutoOpened && activeBridgePeerIds.isNotEmpty()) {
+                            viewingPeerId = activeBridgePeerIds.first()
+                            hasAutoOpened = true
+                        }
+                        // Fall back to the list if the one being viewed dropped.
+                        if (viewingPeerId != null && viewingPeerId !in activeBridgePeerIds) {
+                            viewingPeerId = null
+                        }
                     }
 
-                    if (viewingTerminal && activeBridgePeerId != null) {
+                    val viewingPeer = peers.find { it.id == viewingPeerId }
+                    if (viewingPeerId != null && viewingPeer != null) {
                         TerminalScreen(
+                            peerId = viewingPeerId!!,
+                            deviceName = viewingPeer.deviceName,
                             terminalBridge = app.terminalBridge,
-                            onBack = { viewingTerminal = false }
+                            onBack = { viewingPeerId = null }
                         )
                     } else {
                         PairingScreen(
@@ -67,7 +85,7 @@ class MainActivity : ComponentActivity() {
                                 localAddresses = NetworkUtils.localAddresses()
                             },
                             onUnpair = { peer -> app.peerRepository.remove(peer.id) },
-                            onOpenTerminal = { viewingTerminal = true }
+                            onOpenTerminal = { peer -> viewingPeerId = peer.id }
                         )
                     }
                 }

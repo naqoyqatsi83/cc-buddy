@@ -75,7 +75,7 @@ class BuddyWsServer(
                                 pairedPeerId?.let { attachBridge(it) }
                             }
                             "pty_data" -> {
-                                terminalBridge.emitOutput(msg.optString("data"))
+                                pairedPeerId?.let { terminalBridge.emitOutput(it, msg.optString("data")) }
                             }
                             "notification" -> {
                                 hookNotifier.onClaudeNotification(

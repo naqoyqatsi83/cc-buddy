@@ -4,42 +4,55 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 
 /**
- * Bridges the single active paired WS connection's PTY stream to the
- * Compose terminal screen. `pty_data` frames arriving on the connection
- * are pushed into [output]; replies typed/tapped in the UI go out through
- * whichever `sender` the currently-active connection registered via
- * [attach] (there's exactly one live bridge at a time — CC Buddy mirrors
- * one PC session per phone for now).
+ * Bridges every currently-connected paired WS session's PTY stream to the
+ * Compose terminal screen — keyed by peer id, so multiple PC sessions can
+ * be mirrored at once (Phase 2: one phone pairs with multiple PC sessions
+ * over time, per the spec) without their output interleaving into a
+ * single stream. `pty_data` frames for a given peer are pushed into that
+ * peer's own [output] flow; replies typed/tapped in the UI for a given
+ * peer go out through the `sender` that peer's connection registered.
  */
 class TerminalBridge {
-    private val _output = MutableSharedFlow<String>(extraBufferCapacity = 4096)
-    val output: SharedFlow<String> = _output
+    private class PeerBridge(
+        // Replay a bounded backlog so (re)opening this peer's terminal —
+        // after being on the session list, or after switching to another
+        // peer and back — shows recent output instead of a blank screen;
+        // each subscriber (a fresh WebView/xterm.js instance) replays it
+        // in order and correctly reconstructs the visible terminal state.
+        val output: MutableSharedFlow<String> = MutableSharedFlow(replay = 300, extraBufferCapacity = 4096),
+        var sender: (suspend (String) -> Unit)? = null
+    )
 
-    private val _activePeerId = MutableStateFlow<String?>(null)
-    val activePeerId: StateFlow<String?> = _activePeerId
+    private val bridges = mutableMapOf<String, PeerBridge>()
 
-    @Volatile
-    private var sender: (suspend (String) -> Unit)? = null
+    private val _activePeerIds = MutableStateFlow<Set<String>>(emptySet())
+    /** Peer ids that currently have a live, mirrorable connection. */
+    val activePeerIds: StateFlow<Set<String>> = _activePeerIds
 
+    @Synchronized
     fun attach(peerId: String, sender: suspend (String) -> Unit) {
-        this.sender = sender
-        _activePeerId.value = peerId
+        bridges.getOrPut(peerId) { PeerBridge() }.sender = sender
+        _activePeerIds.update { it + peerId }
     }
 
+    @Synchronized
     fun detach(peerId: String) {
-        if (_activePeerId.value == peerId) {
-            sender = null
-            _activePeerId.value = null
-        }
+        bridges.remove(peerId)
+        _activePeerIds.update { it - peerId }
     }
 
-    fun emitOutput(chunk: String) {
-        _output.tryEmit(chunk)
+    @Synchronized
+    fun emitOutput(peerId: String, chunk: String) {
+        bridges[peerId]?.output?.tryEmit(chunk)
     }
 
-    suspend fun sendInput(text: String) {
-        sender?.invoke(text)
+    /** Null if this peer has no live connection right now (e.g. already disconnected). */
+    fun outputFlow(peerId: String): SharedFlow<String>? = bridges[peerId]?.output
+
+    suspend fun sendInput(peerId: String, text: String) {
+        bridges[peerId]?.sender?.invoke(text)
     }
 }

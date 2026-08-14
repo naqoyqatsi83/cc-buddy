@@ -63,7 +63,32 @@ Build order (from the spec) so far:
       attaching a real 100.x address to an unrelated dummy interface
       (`dummy0`) via `adb root` + `ip addr add` — the app correctly
       labeled and displayed it.
-- [ ] 9. Phase 2: FCM, encrypted token storage hardening, multi-session UI.
+- Phase 2 (not part of the numbered build order):
+  - [x] Encrypted token storage hardening — PC-side pairing tokens now
+        live in the OS keychain via `keytar` instead of a plaintext
+        file (Android already used `EncryptedSharedPreferences`).
+        Verified: token appears in the OS keychain, not in
+        `~/.buddy/peers.json`; unpairing removes it from both.
+  - [x] Multi-session UI — one phone pairing with several PC sessions
+        at once now mirrors and controls each independently instead of
+        the second connection silently stealing the first's input
+        routing and mixing its output into the same stream. Verified
+        two simultaneous fake daemon sessions on the emulator: switching
+        between them shows each one's correct isolated backlog, and a
+        reply typed for session B only reaches session B's PTY. This
+        testing round caught two real bugs beyond the core feature: (1)
+        the terminal's WebView signaled "ready" immediately after
+        `loadUrl()`, before the page's JS had actually finished loading,
+        so replayed output silently failed to render on every session
+        switch (fixed: wait for `onPageFinished`); (2) a second PC
+        session connecting while the user had deliberately returned to
+        the session list would auto-navigate them into a session they'd
+        already seen instead of just updating the list quietly (fixed:
+        auto-open only the very first bridge of the app's lifetime).
+  - [ ] FCM for notifications when the app's fully backgrounded/killed —
+        needs a Firebase project and a small cloud relay service, both
+        requiring external account setup this environment can't do
+        autonomously. Not started.
 
 ## Try it (daemon only, no phone yet)
 

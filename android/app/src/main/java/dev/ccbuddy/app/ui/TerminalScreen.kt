@@ -32,6 +32,8 @@ private val QUICK_REPLIES = listOf("1", "2", "y", "n", "")
 
 @Composable
 fun TerminalScreen(
+    peerId: String,
+    deviceName: String,
     terminalBridge: TerminalBridge,
     onBack: () -> Unit,
     modifier: Modifier = Modifier
@@ -40,16 +42,23 @@ fun TerminalScreen(
     var webView by remember { mutableStateOf<WebView?>(null) }
     var replyText by remember { mutableStateOf("") }
 
-    LaunchedEffect(webView) {
+    LaunchedEffect(peerId, webView) {
         val wv = webView ?: return@LaunchedEffect
-        terminalBridge.output.collect { chunk ->
+        val flow = terminalBridge.outputFlow(peerId) ?: return@LaunchedEffect
+        // The WebView instance is reused across peer switches (Compose
+        // doesn't recreate it just because peerId changed), so clear
+        // whatever the previous peer left on screen before replaying this
+        // one's backlog — otherwise the two peers' output visually
+        // concatenates in the same xterm.js buffer.
+        wv.evaluateJavascript("clearTerminal()", null)
+        flow.collect { chunk ->
             val b64 = Base64.encodeToString(chunk.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
             wv.evaluateJavascript("writeChunkB64('$b64')", null)
         }
     }
 
     fun send(text: String) {
-        scope.launch { terminalBridge.sendInput(text) }
+        scope.launch { terminalBridge.sendInput(peerId, text) }
     }
 
     Column(modifier = modifier.fillMaxSize()) {
@@ -58,6 +67,7 @@ fun TerminalScreen(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             TextButton(onClick = onBack) { Text("< Sessions") }
+            Text(deviceName, modifier = Modifier.padding(top = 12.dp, end = 8.dp))
         }
 
         TerminalWebView(
@@ -109,9 +119,18 @@ private fun TerminalWebView(modifier: Modifier = Modifier, onReady: (WebView) ->
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
                 settings.javaScriptEnabled = true
-                webViewClient = WebViewClient()
+                // Only signal ready once the page (and xterm.js, and our
+                // writeChunkB64/clearTerminal functions) has actually
+                // finished loading — calling evaluateJavascript() any
+                // earlier fails silently since those functions don't exist
+                // yet, which was dropping the whole replay backlog on every
+                // WebView recreation (returning from the session list).
+                webViewClient = object : WebViewClient() {
+                    override fun onPageFinished(view: WebView, url: String?) {
+                        onReady(view)
+                    }
+                }
                 loadUrl("file:///android_asset/xterm/index.html")
-                onReady(this)
             }
         }
     )
