@@ -26,16 +26,22 @@ class BuddyApp : Application() {
         peerRepository = PeerRepository(tokenStore)
         pairingState = PairingState()
         terminalBridge = TerminalBridge()
-        createNotificationChannel()
+        createNotificationChannels()
     }
 
-    private fun createNotificationChannel() {
+    private fun createNotificationChannels() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val channel = NotificationChannel(
+        val listening = NotificationChannel(
             NOTIFICATION_CHANNEL_ID,
             getString(R.string.notification_channel_name),
             NotificationManager.IMPORTANCE_LOW
         )
-        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        val alerts = NotificationChannel(
+            ALERT_NOTIFICATION_CHANNEL_ID,
+            getString(R.string.alert_channel_name),
+            NotificationManager.IMPORTANCE_HIGH
+        )
+        getSystemService(NotificationManager::class.java)
+            .createNotificationChannels(listOf(listening, alerts))
     }
 }

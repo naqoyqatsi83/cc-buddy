@@ -11,3 +11,9 @@ const val PIN_TTL_MILLIS = 2 * 60 * 1000L
 
 const val NOTIFICATION_CHANNEL_ID = "buddy_listening"
 const val FOREGROUND_NOTIFICATION_ID = 1
+
+/** Separate high-importance channel for "Claude needs you" alerts — the
+ * persistent listening notification above is deliberately low-importance
+ * and silent, this one should actually buzz the phone. */
+const val ALERT_NOTIFICATION_CHANNEL_ID = "buddy_alerts"
+const val ALERT_NOTIFICATION_ID = 2

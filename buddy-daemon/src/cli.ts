@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import { createServer } from "node:net";
-import { startControlApi } from "./controlApi.js";
+import { startControlApi, type SessionRef } from "./controlApi.js";
 import { startSession } from "./session.js";
 import { sessionRegistry } from "./sessionRegistry.js";
+import { installHooks } from "./hooksConfig.js";
 
 const program = new Command();
 
@@ -20,7 +21,12 @@ program
   .allowUnknownOption(true)
   .action(async (opts, cmd) => {
     const controlPort = await findFreePort();
-    await startControlApi(controlPort);
+    const sessionRef: SessionRef = {};
+    await startControlApi(controlPort, sessionRef);
+
+    // Must happen before the PTY spawns claude — hooks are only read at
+    // startup, not live-reloaded.
+    installHooks(opts.cwd, controlPort);
 
     const session = startSession({
       cwd: opts.cwd,
@@ -28,6 +34,7 @@ program
       claudeArgs: cmd.args, // anything after `start --cwd ...` is forwarded to claude verbatim
     });
 
+    sessionRef.current = session;
     sessionRegistry.add(session);
   });
 

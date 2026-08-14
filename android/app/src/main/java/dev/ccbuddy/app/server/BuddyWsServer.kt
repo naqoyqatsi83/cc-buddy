@@ -1,6 +1,7 @@
 package dev.ccbuddy.app.server
 
 import dev.ccbuddy.app.WS_PORT
+import dev.ccbuddy.app.data.HookNotifier
 import dev.ccbuddy.app.data.PairingState
 import dev.ccbuddy.app.data.PeerRepository
 import dev.ccbuddy.app.data.PeerSession
@@ -36,6 +37,7 @@ class BuddyWsServer(
     private val pairingState: PairingState,
     private val peerRepository: PeerRepository,
     private val terminalBridge: TerminalBridge,
+    private val hookNotifier: HookNotifier,
     private val phoneDeviceName: () -> String
 ) {
     private var engine: ApplicationEngine? = null
@@ -74,6 +76,18 @@ class BuddyWsServer(
                             }
                             "pty_data" -> {
                                 terminalBridge.emitOutput(msg.optString("data"))
+                            }
+                            "notification" -> {
+                                hookNotifier.onClaudeNotification(
+                                    msg.optString("message", "Claude needs your attention")
+                                )
+                            }
+                            "stop" -> hookNotifier.onClaudeStop()
+                            "pretooluse" -> {
+                                hookNotifier.onPreToolUse(
+                                    msg.optString("tool", "unknown"),
+                                    msg.opt("input")?.toString()
+                                )
                             }
                             else -> Unit
                         }

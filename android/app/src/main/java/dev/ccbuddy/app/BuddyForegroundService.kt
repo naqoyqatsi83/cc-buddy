@@ -7,7 +7,9 @@ import android.content.Intent
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import dev.ccbuddy.app.data.ActivePin
+import dev.ccbuddy.app.data.HookNotifier
 import dev.ccbuddy.app.server.BuddyWsServer
 import dev.ccbuddy.app.server.NsdHelper
 import dev.ccbuddy.app.util.PinGenerator
@@ -22,7 +24,7 @@ import kotlinx.coroutines.launch
  * Must stay alive with a persistent notification per the spec — Android
  * kills backgrounded services without one.
  */
-class BuddyForegroundService : Service() {
+class BuddyForegroundService : Service(), HookNotifier {
 
     private val job = Job()
     private val scope = CoroutineScope(Dispatchers.Default + job)
@@ -36,6 +38,7 @@ class BuddyForegroundService : Service() {
             pairingState = app.pairingState,
             peerRepository = app.peerRepository,
             terminalBridge = app.terminalBridge,
+            hookNotifier = this,
             phoneDeviceName = { Build.MODEL ?: "Android phone" }
         )
         nsdHelper = NsdHelper(this)
@@ -69,6 +72,39 @@ class BuddyForegroundService : Service() {
                 app.pairingState.setPin(null)
             }
         }
+    }
+
+    /** Notification hook fired — Claude is idle/waiting on a permission
+     * prompt. This is the "buzz the phone" moment, unlike the silent
+     * low-importance foreground notification. */
+    override fun onClaudeNotification(message: String) {
+        val openApp = PendingIntent.getActivity(
+            this, 1,
+            Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE
+        )
+        val notification = NotificationCompat.Builder(this, ALERT_NOTIFICATION_CHANNEL_ID)
+            .setContentTitle(getString(R.string.app_name))
+            .setContentText(message)
+            .setSmallIcon(android.R.drawable.stat_sys_warning)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(openApp)
+            .build()
+        NotificationManagerCompat.from(this).notify(ALERT_NOTIFICATION_ID, notification)
+    }
+
+    /** Stop hook fired — the turn finished, so whatever was waiting for
+     * attention no longer is. */
+    override fun onClaudeStop() {
+        NotificationManagerCompat.from(this).cancel(ALERT_NOTIFICATION_ID)
+    }
+
+    /** PreToolUse hook fired — logged for now; a richer "review this Edit"
+     * card is a future-build-order enhancement, not required for the
+     * notification pipeline itself. */
+    override fun onPreToolUse(tool: String, input: String?) {
+        android.util.Log.i("BuddyForegroundService", "PreToolUse: $tool $input")
     }
 
     private fun buildNotification(): Notification {

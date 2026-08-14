@@ -3,13 +3,21 @@ import type { Server } from "node:http";
 import { sessionRegistry } from "./sessionRegistry.js";
 import { pairWithPhone, unpairPeer } from "./pairing.js";
 import { scanForPhones } from "./mdns.js";
+import { broadcastToPeers } from "./bridge.js";
+import type { BuddySession } from "./session.js";
+
+/** Mutable handle so hook routes can reach the session created just after
+ * the control API starts listening (see cli.ts for the startup order). */
+export interface SessionRef {
+  current?: BuddySession;
+}
 
 /**
  * Starts the localhost-only control API used by the `/buddy-*` slash
  * commands and by Claude Code's HTTP hooks. Binds 127.0.0.1 only — never
  * expose this on the LAN (see spec's Security notes).
  */
-export function startControlApi(port: number): Promise<Server> {
+export function startControlApi(port: number, sessionRef: SessionRef): Promise<Server> {
   const app = express();
   app.use(express.json());
 
@@ -55,21 +63,37 @@ export function startControlApi(port: number): Promise<Server> {
     res.json({ ok: true });
   });
 
-  // Claude Code native HTTP hook receivers (see .claude/settings.json).
+  // Claude Code native HTTP hook receivers (see .claude/settings.local.json,
+  // written by hooksConfig.ts). Push straight to any connected paired
+  // phone(s); FCM fallback for a backgrounded/killed app is Phase 2.
   app.post("/hook/notification", (req, res) => {
-    // TODO(build-order step 6): forward to paired phone(s) via WS push /
-    // FCM fallback. Logged only for now.
-    console.log("[hook:notification]", req.body);
+    const session = sessionRef.current;
+    if (session) {
+      broadcastToPeers(session, {
+        type: "notification",
+        message: req.body?.message ?? "Claude needs your attention",
+      });
+    }
     res.json({ ok: true });
   });
 
   app.post("/hook/stop", (req, res) => {
-    console.log("[hook:stop]", req.body);
+    const session = sessionRef.current;
+    if (session) {
+      broadcastToPeers(session, { type: "stop" });
+    }
     res.json({ ok: true });
   });
 
   app.post("/hook/pretooluse", (req, res) => {
-    console.log("[hook:pretooluse]", req.body);
+    const session = sessionRef.current;
+    if (session) {
+      broadcastToPeers(session, {
+        type: "pretooluse",
+        tool: req.body?.tool_name ?? req.body?.tool ?? "unknown",
+        input: req.body?.tool_input ?? req.body?.input ?? null,
+      });
+    }
     res.json({ ok: true });
   });
 

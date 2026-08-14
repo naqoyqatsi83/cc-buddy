@@ -33,7 +33,13 @@ Build order (from the spec) so far:
 - [x] 5. Reply injection: phone sends `input` frames (quick-reply buttons
       or the text field's Send button), daemon writes them into the PTY
       as `text + "\r"`.
-- [ ] 6. Claude Code HTTP hooks wired to push notifications.
+- [x] 6. Claude Code HTTP hooks wired to push notifications —
+      `buddy start` writes Notification/Stop/PreToolUse HTTP hooks into
+      `.claude/settings.local.json` pointing at the session's control
+      port; the daemon forwards them to paired phone(s), which shows a
+      real high-importance Android notification ("Claude needs you") on
+      Notification and clears it on Stop. Verified end-to-end on the
+      emulator with real hook POSTs.
 - [x] 7. mDNS discovery both sides — Android advertises `_buddycc._tcp`
       via `NsdManager`; daemon browses for it via `bonjour-service`.
       Verified working discovery in both directions (Android → host and

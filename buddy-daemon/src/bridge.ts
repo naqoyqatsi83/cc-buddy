@@ -49,3 +49,19 @@ export function closeBridge(peerId: string) {
     activeSockets.delete(peerId);
   }
 }
+
+/**
+ * Pushes a JSON message to every currently-connected peer of a session —
+ * used by the `/hook/*` receivers to forward Claude Code's Notification /
+ * Stop / PreToolUse events to whichever phone(s) are paired.
+ */
+export function broadcastToPeers(session: BuddySession, message: unknown) {
+  const payload = JSON.stringify(message);
+  for (const peer of session.info.peers) {
+    if (!peer.connected) continue;
+    const ws = activeSockets.get(peer.id);
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(payload);
+    }
+  }
+}
