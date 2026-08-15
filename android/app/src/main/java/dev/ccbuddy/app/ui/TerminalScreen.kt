@@ -5,6 +5,7 @@ import android.util.Base64
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.ViewGroup
+import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.horizontalScroll
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -56,10 +58,10 @@ private val QUICK_REPLIES = listOf("1", "2", "y", "n", "")
  * transcript scroll.) This trades independent phone-side scroll
  * (impossible to get right against a TUI that manages its own
  * redraw-based scroll state — see commit history) for something that
- * reuses Claude Code's own, already-working scroll handling. Tap-to-
- * expand collapsed sections is NOT implemented — untested whether
- * Claude Code's TUI responds to mouse clicks at all vs. being
- * keyboard-only for that.
+ * reuses Claude Code's own, already-working scroll handling. A tap is
+ * forwarded the same way, as an SGR mouse click at the tapped cell, for
+ * expand/collapse — untested whether Claude Code's TUI has mouse
+ * reporting enabled at all vs. being keyboard-only for that.
  */
 @Composable
 fun TerminalScreen(
@@ -127,8 +129,32 @@ fun TerminalScreen(
     // them as command-history navigation (like a shell), not transcript
     // scroll, so swiping was literally cycling through past prompts
     // instead of scrolling.
+    val esc = ""
     fun sendScrollKey(down: Boolean) {
-        sendRaw(if (down) "[6~" else "[5~")
+        sendRaw(if (down) "$esc[6~" else "$esc[5~")
+    }
+
+    // Finer-grained scroll than a full Page Up/Down -- a single mouse
+    // wheel tick, SGR mouse-reporting format (button 64 = wheel up, 65 =
+    // wheel down). Position doesn't track a real cursor (there isn't
+    // one, this is a synthetic wheel event from a button tap, not a
+    // hover), so it's sent at a fixed nominal cell -- most apps scroll
+    // whatever has general focus regardless of the reported position for
+    // a plain wheel event. Only does anything if Claude Code's TUI has
+    // mouse reporting enabled at all; untested.
+    fun sendScrollWheel(down: Boolean) {
+        val button = if (down) 65 else 64
+        sendRaw("$esc[<$button;1;1M")
+    }
+
+    // A tap forwarded as a real mouse click (SGR format: press then
+    // release) at the tapped cell -- see index.html's handleTap for the
+    // pixel-to-cell conversion. Only does anything if Claude Code's TUI
+    // has mouse reporting enabled *and* actually acts on clicks (vs.
+    // being keyboard-only for expand/collapse); untested either way.
+    fun sendMouseClick(col: Int, row: Int) {
+        sendRaw("$esc[<0;$col;${row}M")
+        sendRaw("$esc[<0;$col;${row}m")
     }
 
     Column(modifier = modifier.fillMaxSize()) {
@@ -147,24 +173,41 @@ fun TerminalScreen(
                 onSwipePages = { pages ->
                     repeat(kotlin.math.abs(pages)) { sendScrollKey(down = pages > 0) }
                 },
+                onTap = { col, row -> sendMouseClick(col, row) },
                 onReady = { webView = it }
             )
             // A narrow side column, not the bottom button row: keeping
             // these off the bottom row leaves room there for Tab/Enter/
             // quick-replies to all stay visible without needing a
-            // horizontal scroll to reach any of them.
+            // horizontal scroll to reach any of them. Double arrows
+            // (Page Up/Down) for large jumps, single arrows (one mouse
+            // wheel tick each) for fine adjustment -- same idea as
+            // having both a scrollbar's page-jump area and its wheel.
             Column(
-                modifier = Modifier.fillMaxHeight().width(56.dp),
+                modifier = Modifier.fillMaxHeight().width(40.dp),
                 verticalArrangement = Arrangement.Center
             ) {
+                val sideButtonPadding = PaddingValues(horizontal = 2.dp, vertical = 8.dp)
                 TextButton(
                     onClick = { sendScrollKey(down = false) },
+                    contentPadding = sideButtonPadding,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("▲▲") }
+                TextButton(
+                    onClick = { sendScrollWheel(down = false) },
+                    contentPadding = sideButtonPadding,
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("▲") }
                 TextButton(
-                    onClick = { sendScrollKey(down = true) },
+                    onClick = { sendScrollWheel(down = true) },
+                    contentPadding = sideButtonPadding,
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("▼") }
+                TextButton(
+                    onClick = { sendScrollKey(down = true) },
+                    contentPadding = sideButtonPadding,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("▼▼") }
             }
         }
 
@@ -211,9 +254,11 @@ fun TerminalScreen(
 private fun TerminalWebView(
     modifier: Modifier = Modifier,
     onSwipePages: (Int) -> Unit,
+    onTap: (col: Int, row: Int) -> Unit,
     onReady: (WebView) -> Unit
 ) {
     val onSwipePagesState = rememberUpdatedState(onSwipePages)
+    val onTapState = rememberUpdatedState(onTap)
     AndroidView(
         modifier = modifier,
         factory = { context ->
@@ -223,6 +268,19 @@ private fun TerminalWebView(
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
                 settings.javaScriptEnabled = true
+                // JS calls window.Android.onTerminalTap(col, row) after
+                // converting a tap's pixel position to a terminal cell
+                // (see index.html's handleTap) -- kept as a real
+                // col/row->mouse-click conversion in JS since it already
+                // knows the current font size and scroll offsets; Kotlin
+                // only forwards the resulting cell onward as SGR mouse
+                // click bytes (see TerminalScreen's sendMouseClick).
+                addJavascriptInterface(object {
+                    @JavascriptInterface
+                    fun onTerminalTap(col: Int, row: Int) {
+                        onTapState.value(col, row)
+                    }
+                }, "Android")
                 // The terminal is not reflowed to fit the screen — it
                 // renders at the PC terminal's actual size, which is
                 // usually wider than the phone. Pinch-zoom lets you zoom
@@ -264,6 +322,18 @@ private fun TerminalWebView(
                             pages--
                         }
                         if (pages != 0) onSwipePagesState.value(pages)
+                        return true
+                    }
+
+                    // A plain tap, not a drag -- forwarded as a mouse
+                    // click at the tapped terminal cell (see the JS
+                    // interface above and handleTap in index.html) so
+                    // expand/collapse on a collapsed section can work the
+                    // same way clicking it on the PC does. e.getX/Y() are
+                    // in device px; index.html's math is in CSS px.
+                    override fun onSingleTapUp(e: MotionEvent): Boolean {
+                        val d = context.resources.displayMetrics.density
+                        this@apply.evaluateJavascript("handleTap(${e.x / d}, ${e.y / d})", null)
                         return true
                     }
                 })
