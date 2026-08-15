@@ -104,8 +104,17 @@
       // If the grid still doesn't fit even at MIN_FONT_SIZE (this user's
       // PC terminal is 86 rows), give #term its true full content height
       // so the excess becomes reachable via #scrollx's vertical scroll
-      // instead of just clipping.
-      var neededPx = Math.ceil(lastRows * fontSize * ROW_HEIGHT_FACTOR);
+      // instead of just clipping. Prefer xterm's own actual rendered cell
+      // height over the ROW_HEIGHT_FACTOR estimate when available -- the
+      // estimate is only approximate and was leaving a visible gap below
+      // the last row (the estimate rounds up to guarantee no clipping,
+      // but that guard band was bigger than it needed to be).
+      var realCellHeight = null;
+      try {
+        realCellHeight = term._core._renderService.dimensions.css.cell.height;
+      } catch (e) {}
+      var effectiveRowHeight = realCellHeight || (fontSize * ROW_HEIGHT_FACTOR);
+      var neededPx = Math.ceil(lastRows * effectiveRowHeight);
       document.getElementById("term").style.height = Math.max(neededPx, heightPx) + "px";
       scrollContainerToBottom();
       // term.resize() can itself perturb the scroll position. xterm only

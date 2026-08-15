@@ -184,15 +184,15 @@ fun TerminalScreen(
             // wheel tick each) for fine adjustment -- same idea as
             // having both a scrollbar's page-jump area and its wheel.
             Column(
-                modifier = Modifier.fillMaxHeight().width(40.dp),
+                modifier = Modifier.fillMaxHeight().width(32.dp),
                 verticalArrangement = Arrangement.Center
             ) {
-                val sideButtonPadding = PaddingValues(horizontal = 2.dp, vertical = 8.dp)
+                val sideButtonPadding = PaddingValues(horizontal = 0.dp, vertical = 8.dp)
                 TextButton(
                     onClick = { sendScrollKey(down = false) },
                     contentPadding = sideButtonPadding,
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("▲▲") }
+                ) { Text("⏫") }
                 TextButton(
                     onClick = { sendScrollWheel(down = false) },
                     contentPadding = sideButtonPadding,
@@ -207,7 +207,7 @@ fun TerminalScreen(
                     onClick = { sendScrollKey(down = true) },
                     contentPadding = sideButtonPadding,
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("▼▼") }
+                ) { Text("⏬") }
             }
         }
 
@@ -346,6 +346,13 @@ private fun TerminalWebView(
                     // fall through as usual.
                     gestureDetector.onTouchEvent(event)
                 }
+                // The captured terminal content includes plain-looking
+                // URLs (from things like install instructions), and a
+                // long-press on one triggered the WebView's native
+                // link/text context menu -- surfacing as an unrelated
+                // Android system "app info" popup on some builds. Nothing
+                // in this read-only mirror needs a long-press menu.
+                setOnLongClickListener { true }
 
                 // Only signal ready once the page (and xterm.js, and our
                 // writeChunkB64/clearTerminal functions) has actually
