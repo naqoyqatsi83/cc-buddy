@@ -8,17 +8,18 @@ import android.view.ViewGroup
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -29,6 +30,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -41,27 +43,28 @@ import androidx.compose.ui.viewinterop.AndroidView
 import dev.ccbuddy.app.data.TerminalBridge
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
-import org.json.JSONArray
 
 private val QUICK_REPLIES = listOf("1", "2", "y", "n", "")
 
 /**
- * A scrollable history (everything ever shown) with a small fixed footer
- * below it — the current prompt + status, always visible, updated in
- * place, that scrolling the history never disturbs. A single unified
- * scrollable stream (tried first) was wrong: scrolling up carried the
- * prompt/status away with it instead of leaving them anchored, which
- * doesn't match how a real terminal's status line or a chat app's input
- * bar behaves. See buddy-daemon/src/shadowTerminal.ts for how the two are
- * genuinely distinct daemon-side: lines that have permanently scrolled
- * off the PC's active screen (history, appended once) versus the current
- * active screen itself (tail, replaced wholesale as it's redrawn).
+ * Two panes again, but for a different reason than the original split:
+ * History (top) is the daemon's independently-captured transcript — see
+ * buddy-daemon/src/shadowTerminal.ts — rendered natively (Compose,
+ * plain text, no WebView). Live (bottom) is the exact 1:1 raw-byte PC
+ * mirror, restored after several independent-capture designs proved too
+ * fragile against real usage (blank-line gaps after a daemon restart,
+ * idle-refresh duplication, row-height bugs). Colors and exact layout
+ * only ever worked reliably through this raw path.
  *
- * The history pane is xterm.js (buddy-daemon captures plain, diffed,
- * already-rendered text — not raw PTY bytes — so a normal, non-alt-screen
- * scrollback works safely here without needing to mirror the PC's exact
- * row count). The footer is plain Compose text — it's only ever a few
- * lines, no scrolling needed.
+ * Scrolling Live now sends real key sequences into the PC's PTY instead
+ * of manipulating a local buffer — a swipe becomes an arrow-key press
+ * Claude Code's own TUI receives and scrolls with, same as pressing that
+ * key at the PC. This trades independent phone-side scroll (impossible
+ * to get right against an app that manages its own redraw-based scroll
+ * state — see commit history) for something that actually works: the
+ * PC's own scrolling, remote-controlled. Tap-to-expand collapsed
+ * sections is NOT implemented — untested whether Claude Code's TUI
+ * responds to mouse clicks at all vs. being keyboard-only for that.
  */
 @Composable
 fun TerminalScreen(
@@ -74,51 +77,50 @@ fun TerminalScreen(
     val scope = rememberCoroutineScope()
     var webView by remember { mutableStateOf<WebView?>(null) }
     var replyText by remember { mutableStateOf("") }
+    // Real PTY row count, used to convert a touch-drag's pixel distance
+    // into a line count for the swipe-to-scroll below.
+    var rows by remember { mutableStateOf(30) }
+    val density = LocalDensity.current.density
+    var containerHeightCssPx by remember { mutableStateOf(0) }
 
-    val transcript by (terminalBridge.transcriptFlow(peerId) ?: remember { MutableStateFlow(emptyList()) })
-        .collectAsState(initial = emptyList())
-    val tail by (terminalBridge.tailFlow(peerId) ?: remember { MutableStateFlow(emptyList()) })
-        .collectAsState(initial = emptyList())
-
-    LaunchedEffect(peerId, webView) {
-        val wv = webView ?: return@LaunchedEffect
-        // The WebView instance is reused across peer switches (Compose
-        // doesn't recreate it just because peerId changed), so clear
-        // whatever the previous peer left on screen — otherwise the two
-        // peers' output visually concatenates in the same xterm.js buffer.
-        wv.evaluateJavascript("clearTerminal()", null)
-        terminalBridge.sizeFlow(peerId)?.value?.let { size ->
-            wv.evaluateJavascript("resizeCols(${size.cols})", null)
+    LaunchedEffect(webView, containerHeightCssPx) {
+        if (containerHeightCssPx > 0) {
+            webView?.evaluateJavascript("setContainerHeightPx($containerHeightCssPx)", null)
         }
     }
 
-    // Column width still mirrors the PC (so captured lines don't wrap at a
-    // different width than they were originally rendered for) — rows no
-    // longer need to, unlike the old raw-byte mirror.
+    LaunchedEffect(peerId, webView) {
+        val wv = webView ?: return@LaunchedEffect
+        val flow = terminalBridge.outputFlow(peerId) ?: return@LaunchedEffect
+        // The WebView instance is reused across peer switches (Compose
+        // doesn't recreate it just because peerId changed), so clear
+        // whatever the previous peer left on screen before replaying this
+        // one's backlog — otherwise the two peers' output visually
+        // concatenates in the same xterm.js buffer.
+        wv.evaluateJavascript("clearTerminal()", null)
+        terminalBridge.sizeFlow(peerId)?.value?.let { size ->
+            wv.evaluateJavascript("resizeTerm(${size.cols}, ${size.rows})", null)
+            rows = size.rows
+        }
+        flow.collect { chunk ->
+            val b64 = Base64.encodeToString(chunk.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+            wv.evaluateJavascript("writeChunkB64('$b64')", null)
+        }
+    }
+
     LaunchedEffect(peerId, webView) {
         val wv = webView ?: return@LaunchedEffect
         val sizes = terminalBridge.sizeFlow(peerId) ?: return@LaunchedEffect
         sizes.collect { size ->
-            if (size != null) wv.evaluateJavascript("resizeCols(${size.cols})", null)
+            if (size != null) {
+                wv.evaluateJavascript("resizeTerm(${size.cols}, ${size.rows})", null)
+                rows = size.rows
+            }
         }
     }
 
-    // Feed only newly-appended transcript lines to the WebView, tracking
-    // how many have been sent so far — transcript is the full growing
-    // list (see TerminalBridge.transcriptFlow), re-sending it whole on
-    // every emission would re-append everything already shown.
-    var sentCount by remember(peerId) { mutableStateOf(0) }
-    LaunchedEffect(peerId, webView) { sentCount = 0 }
-    LaunchedEffect(webView, transcript) {
-        val wv = webView ?: return@LaunchedEffect
-        if (transcript.size > sentCount) {
-            val newLines = transcript.subList(sentCount, transcript.size)
-            val arr = JSONArray()
-            newLines.forEach { line -> arr.put(Base64.encodeToString(line.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)) }
-            wv.evaluateJavascript("appendLinesB64('${arr.toString()}')", null)
-            sentCount = transcript.size
-        }
-    }
+    val transcript by (terminalBridge.transcriptFlow(peerId) ?: remember { MutableStateFlow(emptyList()) })
+        .collectAsState(initial = emptyList())
 
     fun send(text: String) {
         scope.launch { terminalBridge.sendInput(peerId, text) }
@@ -126,6 +128,17 @@ fun TerminalScreen(
 
     fun sendRaw(text: String) {
         scope.launch { terminalBridge.sendRaw(peerId, text) }
+    }
+
+    // A swipe becomes this many arrow-key presses sent to the PC. Arrow
+    // keys, not Page Up/Down, on the theory that most TUIs reserve
+    // Page Up/Down for coarser jumps and treat arrows as the fine-grained
+    // scroll/navigate key — genuinely untested against Claude Code's
+    // specific TUI, may need to switch to [5~ / [6~ (Page
+    // Up/Down) instead if arrows turn out to do something else (e.g.
+    // moving an input cursor rather than scrolling).
+    fun sendScrollKey(down: Boolean) {
+        sendRaw(if (down) "[B" else "[A")
     }
 
     Column(modifier = modifier.fillMaxSize()) {
@@ -137,24 +150,50 @@ fun TerminalScreen(
             Text(deviceName, modifier = Modifier.padding(top = 12.dp, end = 8.dp))
         }
 
-        val density = LocalDensity.current.density
-        var containerHeightCssPx by remember { mutableStateOf(0) }
-        TerminalWebView(
-            modifier = Modifier.fillMaxWidth().weight(1f)
-                .onSizeChanged { size -> containerHeightCssPx = (size.height / density).toInt() },
-            onReady = { webView = it }
-        )
-        // Also re-applied whenever webView itself changes (becomes ready,
-        // or is recreated on peer switch) using whatever height was last
-        // measured — onSizeChanged alone can fire before the WebView has
-        // finished loading resizeToContainer() into existence.
-        LaunchedEffect(webView, containerHeightCssPx) {
-            if (containerHeightCssPx > 0) {
-                webView?.evaluateJavascript("resizeToContainer($containerHeightCssPx)", null)
+        // WebView doesn't reliably participate in Compose's weight()-based
+        // flexible measurement — with two weighted siblings sharing this
+        // Column, it ended up taking more space than its share (pushing
+        // the reply UI off-screen entirely) regardless of the requested
+        // weight. BoxWithConstraints measures the real available pixel
+        // height once, and both panes get an explicit height computed
+        // from it instead of a weight — deterministic regardless of how
+        // WebView behaves internally.
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth().weight(1f)) {
+            val labelHeight = 20.dp
+            val splitHeight = maxHeight - labelHeight * 2
+            val historyHeight = splitHeight * 0.45f
+            val liveHeight = splitHeight - historyHeight
+            Column(modifier = Modifier.fillMaxSize()) {
+                Text(
+                    "History (independent, may show gaps right after a daemon restart)",
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.height(labelHeight).padding(horizontal = 8.dp)
+                )
+                TranscriptPane(
+                    lines = transcript,
+                    modifier = Modifier.fillMaxWidth().height(historyHeight)
+                )
+
+                Text(
+                    "Live (mirrors PC exactly — swipe scrolls the PC's own view)",
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.height(labelHeight).padding(horizontal = 8.dp)
+                )
+                TerminalWebView(
+                    modifier = Modifier.fillMaxWidth().height(liveHeight)
+                        .onSizeChanged { containerHeightCssPx = (it.height / density).toInt() },
+                    rows = rows,
+                    onSwipeLines = { lines ->
+                        // One key press per line-unit the swipe crossed —
+                        // not a single Page Up/Down per gesture, so short
+                        // vs. long swipes scroll proportionally, matching
+                        // the granularity the old local-buffer scroll had.
+                        repeat(kotlin.math.abs(lines)) { sendScrollKey(down = lines > 0) }
+                    },
+                    onReady = { webView = it }
+                )
             }
         }
-
-        TailFooter(lines = tail, modifier = Modifier.fillMaxWidth())
 
         Row(
             modifier = Modifier.fillMaxWidth().padding(8.dp),
@@ -195,40 +234,22 @@ fun TerminalScreen(
 }
 
 /**
- * The current prompt + status, fixed at the bottom of the screen — see
- * the file-level doc comment. Not a LazyColumn: this is only ever a
- * handful of lines (no need for lazy virtualization), and a plain Column
- * with a single horizontalScroll modifier is simplest/safest here —
- * mixing horizontal and vertical scroll modifiers caused real problems
- * for the (much longer) history list, but there's no vertical scroll
- * here to conflict with at all.
+ * Plain, growing, independently-scrollable history — see
+ * buddy-daemon/src/shadowTerminal.ts for how these lines are captured. A
+ * LazyColumn appended to like this never fights the user's scroll
+ * position (unlike the live pane, it's just static text growing over
+ * time), so ordinary touch-scroll works with no special handling needed —
+ * and scrolling it never affects, or is affected by, the PC.
  */
 @Composable
-private fun TailFooter(lines: List<String>, modifier: Modifier = Modifier) {
-    if (lines.isEmpty()) return
-    // In real usage the tail (prompt + status) is only ever a handful of
-    // lines — real conversations exceed the PC terminal's row count
-    // quickly, at which point everything except the true tail flows into
-    // history instead. But nothing guarantees that (a short session, or a
-    // TUI with a large redrawable area), and an unbounded footer here
-    // once ate the whole screen — starving the history WebView and
-    // pushing the reply UI off-screen entirely, which is exactly what it
-    // looks like when a real user says "I can't see the prompt or status
-    // bar at all". Capped height with its own scroll as a hard backstop.
-    Column(
-        modifier = modifier.background(Color(0xFF0D0D0D))
-            .heightIn(max = 160.dp)
-            .verticalScroll(rememberScrollState())
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 4.dp, vertical = 2.dp)
-    ) {
-        lines.forEach { line ->
+private fun TranscriptPane(lines: List<String>, modifier: Modifier = Modifier) {
+    LazyColumn(modifier = modifier.background(Color(0xFF0D0D0D)).padding(horizontal = 4.dp)) {
+        items(lines) { line ->
             Text(
                 text = line,
                 color = Color(0xFFE0E0E0),
                 fontFamily = FontFamily.Monospace,
-                fontSize = 13.sp,
-                softWrap = false
+                fontSize = 12.sp
             )
         }
     }
@@ -236,7 +257,14 @@ private fun TailFooter(lines: List<String>, modifier: Modifier = Modifier) {
 
 @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
 @Composable
-private fun TerminalWebView(modifier: Modifier = Modifier, onReady: (WebView) -> Unit) {
+private fun TerminalWebView(
+    modifier: Modifier = Modifier,
+    rows: Int,
+    onSwipeLines: (Int) -> Unit,
+    onReady: (WebView) -> Unit
+) {
+    val rowsState = rememberUpdatedState(rows)
+    val onSwipeLinesState = rememberUpdatedState(onSwipeLines)
     AndroidView(
         modifier = modifier,
         factory = { context ->
@@ -246,22 +274,21 @@ private fun TerminalWebView(modifier: Modifier = Modifier, onReady: (WebView) ->
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
                 settings.javaScriptEnabled = true
+                // The terminal is not reflowed to fit the screen — it
+                // renders at the PC terminal's actual size, which is
+                // usually wider than the phone. Pinch-zoom lets you zoom
+                // out to see more of it at once.
                 settings.useWideViewPort = true
                 settings.loadWithOverviewMode = false
                 settings.setSupportZoom(true)
                 settings.builtInZoomControls = true
                 settings.displayZoomControls = false
 
-                // Vertical scrollback is driven explicitly from here rather
-                // than relying on the WebView's native touch-to-DOM-scroll
-                // handling of xterm's internal viewport: that path proved
-                // unreliable across devices earlier in this project (worked
-                // in an emulator, did nothing on a real device). A plain
-                // single-finger vertical drag calls xterm's own
-                // scrollLines() API directly. Horizontal panning is left to
-                // the WebView's native handling (CSS overflow-x + pinch).
-                val density = context.resources.displayMetrics.density
-                val rowHeightPx = 14f * 1.15f * density // matches index.html's fixed fontSize
+                // A vertical drag here sends real key presses to the PC
+                // (see onSwipeLines above) instead of scrolling a local
+                // xterm buffer — Claude Code manages its own scroll state
+                // via redraws, so there's no local buffer that scrolling
+                // could meaningfully affect independent of the PC anyway.
                 val gestureDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
                     var accumulatedY = 0f
 
@@ -272,6 +299,8 @@ private fun TerminalWebView(modifier: Modifier = Modifier, onReady: (WebView) ->
                         distanceY: Float
                     ): Boolean {
                         if (kotlin.math.abs(distanceY) <= kotlin.math.abs(distanceX)) return false
+                        val rowHeightPx = height / rowsState.value.coerceAtLeast(1)
+                        if (rowHeightPx <= 0) return false
                         accumulatedY += distanceY
                         var lines = 0
                         while (accumulatedY >= rowHeightPx) {
@@ -282,19 +311,22 @@ private fun TerminalWebView(modifier: Modifier = Modifier, onReady: (WebView) ->
                             accumulatedY += rowHeightPx
                             lines--
                         }
-                        if (lines != 0) evaluateJavascript("scrollLines($lines)", null)
+                        if (lines != 0) onSwipeLinesState.value(lines)
                         return true
                     }
                 })
                 setOnTouchListener { _, event ->
+                    // Propagate the detector's own consumption decision:
+                    // true only when onScroll just handled a vertical-
+                    // dominant drag, so it doesn't also reach the
+                    // WebView's native touch handling. Taps, horizontal
+                    // drags and pinch-zoom are untouched by onScroll and
+                    // fall through as usual.
                     gestureDetector.onTouchEvent(event)
-                    // Never consume: taps, horizontal drags and pinch-zoom
-                    // must still reach the WebView's own handling.
-                    false
                 }
 
                 // Only signal ready once the page (and xterm.js, and our
-                // appendLinesB64/clearTerminal functions) has actually
+                // writeChunkB64/clearTerminal functions) has actually
                 // finished loading — calling evaluateJavascript() any
                 // earlier fails silently since those functions don't exist
                 // yet, which was dropping the whole replay backlog on every
