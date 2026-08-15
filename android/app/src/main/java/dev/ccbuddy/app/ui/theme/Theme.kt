@@ -7,18 +7,23 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-private val BuddyGreen = Color(0xFF00E5A0)
+// Claude's own clay/coral accent, so the app reads as belonging to Claude
+// Code rather than a generic green "terminal app" palette.
+private val ClaudeClay = Color(0xFFD97757)
+private val ClaudeClayDark = Color(0xFFC96442)
 
 private val DarkColors = darkColorScheme(
-    primary = BuddyGreen,
-    secondary = BuddyGreen,
-    background = Color(0xFF0D0D0D),
-    surface = Color(0xFF161616)
+    primary = ClaudeClay,
+    secondary = ClaudeClay,
+    background = Color(0xFF262624),
+    surface = Color(0xFF30302E)
 )
 
 private val LightColors = lightColorScheme(
-    primary = Color(0xFF00A876),
-    secondary = Color(0xFF00A876)
+    primary = ClaudeClayDark,
+    secondary = ClaudeClayDark,
+    background = Color(0xFFF5F4ED),
+    surface = Color(0xFFFFFFFF)
 )
 
 @Composable

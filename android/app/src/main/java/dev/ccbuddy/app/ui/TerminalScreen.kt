@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -71,6 +72,8 @@ fun TerminalScreen(
     deviceName: String,
     terminalBridge: TerminalBridge,
     onBack: () -> Unit,
+    fontSizeOverride: Int? = null,
+    compactMode: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
@@ -86,6 +89,12 @@ fun TerminalScreen(
         if (containerHeightCssPx > 0) {
             webView?.evaluateJavascript("setContainerHeightPx($containerHeightCssPx)", null)
         }
+    }
+
+    // null clears the override on the JS side, falling back to the
+    // auto-fit calculation there.
+    LaunchedEffect(webView, fontSizeOverride) {
+        webView?.evaluateJavascript("setFontSizeOverride(${fontSizeOverride ?: "null"})", null)
     }
 
     LaunchedEffect(peerId, webView) {
@@ -190,7 +199,10 @@ fun TerminalScreen(
                 modifier = Modifier.fillMaxHeight().width(32.dp),
                 verticalArrangement = Arrangement.Center
             ) {
-                val sideButtonPadding = PaddingValues(horizontal = 0.dp, vertical = 8.dp)
+                val sideButtonPadding = PaddingValues(
+                    horizontal = 0.dp,
+                    vertical = if (compactMode) 5.dp else 8.dp
+                )
                 TextButton(
                     onClick = { sendScrollKey(down = false) },
                     contentPadding = sideButtonPadding,
@@ -214,19 +226,34 @@ fun TerminalScreen(
             }
         }
 
+        // "Compact mode" shrinks this bottom cluster's button height by
+        // ~1/3 (per-button vertical content padding, the actual driver of
+        // a TextButton/Button's rendered height) so more of the terminal
+        // is visible -- default (disabled) keeps Material's normal sizing.
+        val bottomButtonPadding = if (compactMode) {
+            PaddingValues(horizontal = 12.dp, vertical = 5.dp)
+        } else {
+            ButtonDefaults.TextButtonContentPadding
+        }
+        val sendButtonPadding = if (compactMode) {
+            PaddingValues(horizontal = 16.dp, vertical = 5.dp)
+        } else {
+            ButtonDefaults.ContentPadding
+        }
+
         Row(
             modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(8.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             QUICK_REPLIES.forEach { reply ->
-                TextButton(onClick = { send(reply) }) {
+                TextButton(onClick = { send(reply) }, contentPadding = bottomButtonPadding) {
                     Text(reply.ifEmpty { "⏎" })
                 }
             }
             // Tab must NOT submit like the replies above (no trailing
             // Enter) — it's how you accept an autocomplete suggestion,
             // which is a raw keystroke, not a complete answer.
-            TextButton(onClick = { sendRaw("\t") }) {
+            TextButton(onClick = { sendRaw("\t") }, contentPadding = bottomButtonPadding) {
                 Text("⇥")
             }
         }
@@ -245,7 +272,7 @@ fun TerminalScreen(
             Button(onClick = {
                 send(replyText)
                 replyText = ""
-            }) {
+            }, contentPadding = sendButtonPadding) {
                 Text("Send")
             }
         }

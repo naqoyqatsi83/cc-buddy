@@ -1,6 +1,6 @@
 <resources>
-    <color name="ic_launcher_background">#1A1A1A</color>
+    <color name="ic_launcher_background">#262624</color>
     <!-- Must match ui/theme/Theme.kt's LightColors.background so there's no
          flash of a different color before Compose takes over. -->
-    <color name="window_background">#FFFBFE</color>
+    <color name="window_background">#F5F4ED</color>
 </resources>

@@ -14,7 +14,7 @@
     html, body {
       margin: 0;
       padding: 0;
-      background: #0d0d0d;
+      background: #262624;
       height: 100%;
       overflow: hidden;
     }
@@ -64,7 +64,7 @@
       convertEol: true,
       fontSize: 14,
       fontFamily: "monospace",
-      theme: { background: "#0d0d0d", foreground: "#e0e0e0" },
+      theme: { background: "#262624", foreground: "#e0e0e0", cursor: "#D97757" },
       disableStdin: true,
       scrollback: 5000
     });
@@ -83,6 +83,16 @@
     // Track the last known PTY size/container height so either input
     // changing can recompute font size independently.
     var lastCols = null, lastRows = null, lastHeightPx = null;
+    // User-chosen fixed size from the Settings screen; null means auto-fit
+    // (the default, and the only mode that guarantees the real row count
+    // fits without clipping -- see the fallback vertical scroll below for
+    // what happens instead once this overrides that).
+    var fontSizeOverridePx = null;
+
+    function setFontSizeOverride(px) {
+      fontSizeOverridePx = px;
+      applyFontSizeForCurrentHeight();
+    }
 
     function applyFontSizeForCurrentHeight() {
       if (lastRows == null) return;
@@ -97,7 +107,12 @@
       // scrollable, not an active grid that's simply too tall for its
       // container.
       var heightPx = lastHeightPx != null ? lastHeightPx : window.innerHeight;
-      var fontSize = Math.floor(heightPx / (lastRows * ROW_HEIGHT_FACTOR));
+      var fontSize;
+      if (fontSizeOverridePx != null) {
+        fontSize = fontSizeOverridePx;
+      } else {
+        fontSize = Math.floor(heightPx / (lastRows * ROW_HEIGHT_FACTOR));
+      }
       fontSize = Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, fontSize));
       term.options.fontSize = fontSize;
       term.resize(lastCols, lastRows);

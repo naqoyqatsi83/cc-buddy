@@ -1,5 +1,7 @@
 import { WebSocket } from "ws";
 import { randomUUID } from "node:crypto";
+import * as os from "node:os";
+import * as path from "node:path";
 import { addToken, removeToken } from "./tokenStore.js";
 import { attachBridge, closeBridge } from "./bridge.js";
 import type { PeerInfo } from "./types.js";
@@ -90,6 +92,13 @@ export async function unpairPeer(session: BuddySession, peerId: string): Promise
   return true;
 }
 
+// "PC" alone doesn't distinguish sessions once someone has more than one
+// paired -- login@hostname:cwd (e.g. "gus@laptop:cc-buddy") mirrors what
+// you'd see in a real terminal prompt and is enough to tell sessions apart
+// at a glance on the phone.
 function hostDeviceName(): string {
-  return process.env.COMPUTERNAME || process.env.HOSTNAME || "PC";
+  const user = os.userInfo().username || "user";
+  const host = (process.env.COMPUTERNAME || os.hostname() || "PC").split(".")[0];
+  const cwd = path.basename(process.cwd()) || "/";
+  return `${user}@${host}:${cwd}`;
 }

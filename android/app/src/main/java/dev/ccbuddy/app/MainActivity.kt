@@ -18,6 +18,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import dev.ccbuddy.app.ui.PairingScreen
+import dev.ccbuddy.app.ui.SettingsScreen
 import dev.ccbuddy.app.ui.TerminalScreen
 import dev.ccbuddy.app.ui.theme.CCBuddyTheme
 import dev.ccbuddy.app.util.NetworkUtils
@@ -47,6 +48,9 @@ class MainActivity : ComponentActivity() {
                     // bridged at once (Phase 2: one phone, several PC sessions), so
                     // this is a specific peer id, not just a boolean.
                     var viewingPeerId by remember { mutableStateOf<String?>(null) }
+                    var showSettings by remember { mutableStateOf(false) }
+                    val fontSizeOverride by app.settingsStore.fontSizeOverride.collectAsState()
+                    val compactMode by app.settingsStore.compactMode.collectAsState()
                     // Only the very first bridge of the app's lifetime auto-opens the
                     // terminal (first-pairing convenience). Without this, returning to
                     // the list to pair a second session and having it connect would
@@ -67,11 +71,28 @@ class MainActivity : ComponentActivity() {
                     }
 
                     val viewingPeer = peers.find { it.id == viewingPeerId }
-                    if (viewingPeerId != null && viewingPeer != null) {
+                    if (showSettings) {
+                        androidx.activity.compose.BackHandler { showSettings = false }
+                        SettingsScreen(
+                            fontSizeOverride = fontSizeOverride,
+                            compactMode = compactMode,
+                            onFontSizeOverrideChange = { app.settingsStore.setFontSizeOverride(it) },
+                            onCompactModeChange = { app.settingsStore.setCompactMode(it) },
+                            onBack = { showSettings = false }
+                        )
+                    } else if (viewingPeerId != null && viewingPeer != null) {
+                        // The system back button used to exit the app
+                        // straight from the terminal screen (there's no
+                        // back stack — this is the only Activity). Route
+                        // it to the same "return to session list" action
+                        // as the on-screen back button instead.
+                        androidx.activity.compose.BackHandler { viewingPeerId = null }
                         TerminalScreen(
                             peerId = viewingPeerId!!,
                             deviceName = viewingPeer.deviceName,
                             terminalBridge = app.terminalBridge,
+                            fontSizeOverride = fontSizeOverride,
+                            compactMode = compactMode,
                             onBack = { viewingPeerId = null }
                         )
                     } else {
@@ -85,7 +106,8 @@ class MainActivity : ComponentActivity() {
                                 localAddresses = NetworkUtils.localAddresses()
                             },
                             onUnpair = { peer -> app.peerRepository.remove(peer.id) },
-                            onOpenTerminal = { peer -> viewingPeerId = peer.id }
+                            onOpenTerminal = { peer -> viewingPeerId = peer.id },
+                            onOpenSettings = { showSettings = true }
                         )
                     }
                 }

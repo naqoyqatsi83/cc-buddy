@@ -18,6 +18,11 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
@@ -28,6 +33,7 @@ import dev.ccbuddy.app.data.ActivePin
 import dev.ccbuddy.app.data.PeerSession
 import dev.ccbuddy.app.data.PendingPairRequest
 import dev.ccbuddy.app.util.LocalAddress
+import kotlinx.coroutines.delay
 
 @Composable
 fun PairingScreen(
@@ -38,9 +44,13 @@ fun PairingScreen(
     onRegeneratePin: () -> Unit,
     onUnpair: (PeerSession) -> Unit,
     onOpenTerminal: (PeerSession) -> Unit,
+    onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.verticalScroll(rememberScrollState()).padding(16.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = onOpenSettings) { Text("Settings") }
+        }
         AsciiLogo()
         Spacer(Modifier.height(24.dp))
 
@@ -83,9 +93,34 @@ fun PairingScreen(
 
 @Composable
 private fun PinCard(activePin: ActivePin?, onRegeneratePin: () -> Unit) {
+    // Ticks once a second purely to force recomposition of the countdown
+    // below -- isExpired()/the remaining-seconds math is recomputed
+    // fresh each tick from activePin.expiresAtMillis, not accumulated.
+    var nowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(activePin) {
+        while (true) {
+            nowMillis = System.currentTimeMillis()
+            delay(1000)
+        }
+    }
+    val remainingSeconds = activePin?.let {
+        ((it.expiresAtMillis - nowMillis) / 1000).coerceAtLeast(0)
+    }
+
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text("Pairing PIN", style = MaterialTheme.typography.titleSmall)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Pairing PIN", style = MaterialTheme.typography.titleSmall)
+                if (remainingSeconds != null) {
+                    Text(
+                        "expires in ${remainingSeconds / 60}:${(remainingSeconds % 60).toString().padStart(2, '0')}",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
             Spacer(Modifier.height(8.dp))
             Text(
                 text = activePin?.pin ?: "------",
