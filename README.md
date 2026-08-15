@@ -84,16 +84,23 @@ A pairing request pops up on the phone — accept it, and the terminal mirror op
 
 ## How it works
 
-```
-┌─────────────────────┐          LAN / Tailscale          ┌──────────────────────┐
-│   buddy start        │◄──────── WebSocket (PIN) ────────►│   CC Buddy Android    │
-│  (wraps `claude` in   │                                    │  Ktor WS server :8765 │
-│   a PTY, node-pty)     │──── raw PTY bytes, resize ───────►│  xterm.js mirror       │
-│                        │◄──── input / raw keystrokes ──────│  reply UI              │
-│  Claude Code HTTP     │                                    │  push notification     │
-│  hooks (Notification, │──── waiting-for-you event ────────►│  on Notification hook  │
-│  Stop, PreToolUse)     │                                    │                        │
-└─────────────────────┘                                    └──────────────────────┘
+```mermaid
+flowchart LR
+    subgraph PC["buddy start (wraps claude in a PTY via node-pty)"]
+        H["Claude Code HTTP hooks\nNotification / Stop / PreToolUse"]
+    end
+
+    subgraph Phone["CC Buddy Android"]
+        WS["Ktor WS server :8765"]
+        X["xterm.js mirror"]
+        R["Reply UI"]
+        N["Push notification"]
+    end
+
+    PC <-->|"WebSocket (PIN)"| WS
+    PC -->|"raw PTY bytes, resize"| X
+    R -->|"input / raw keystrokes"| PC
+    H -->|"waiting-for-you event"| N
 ```
 
 The daemon spawns `claude` inside a real PTY sized to match your terminal, so anything the TUI does (scroll regions, absolute cursor addressing, box-drawing) mirrors byte-for-byte on the phone instead of reflowing or garbling. Claude Code's own HTTP hooks tell the daemon when a session is waiting on you; the daemon forwards that to every paired, connected phone as a real Android notification.
