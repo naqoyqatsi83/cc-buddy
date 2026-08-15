@@ -170,33 +170,6 @@
     function clearTerminal() {
       term.reset();
     }
-
-    // Approximate CSS-px-per-cell, matching the same approximation
-    // already used for row height (ROW_HEIGHT_FACTOR) — avoids depending
-    // on xterm's internal (unstable, proposed-API-only) renderer
-    // dimensions just to convert a tap into a terminal cell. 0.6 is the
-    // typical width/height ratio for a monospace glyph.
-    function cellSizePx() {
-      var fontSize = term.options.fontSize;
-      return { w: fontSize * 0.6, h: fontSize * ROW_HEIGHT_FACTOR };
-    }
-
-    // Called from Android with a tap's position in CSS px relative to the
-    // WebView. Converts to a 1-indexed terminal cell (accounting for
-    // #scrollx's own scroll offsets, both the horizontal pan for wide
-    // content and the vertical fallback scroll from applyFontSizeForCurrentHeight)
-    // and reports it back to Android to send as a real mouse click — see
-    // TerminalScreen.kt's JS interface. Only useful if Claude Code's TUI
-    // has mouse reporting enabled at all; untested either way.
-    function handleTap(xCss, yCss) {
-      var sx = document.getElementById("scrollx");
-      var cell = cellSizePx();
-      var col = Math.floor((xCss + sx.scrollLeft) / cell.w) + 1;
-      var row = Math.floor((yCss + sx.scrollTop) / cell.h) + 1;
-      if (window.Android && window.Android.onTerminalTap) {
-        window.Android.onTerminalTap(col, row);
-      }
-    }
   </script>
 </body>
 </html>

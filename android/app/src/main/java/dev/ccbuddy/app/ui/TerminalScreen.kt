@@ -5,7 +5,6 @@ import android.util.Base64
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.ViewGroup
-import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.horizontalScroll
@@ -58,10 +57,13 @@ private val QUICK_REPLIES = listOf("1", "2", "y", "n", "")
  * transcript scroll.) This trades independent phone-side scroll
  * (impossible to get right against a TUI that manages its own
  * redraw-based scroll state — see commit history) for something that
- * reuses Claude Code's own, already-working scroll handling. A tap is
- * forwarded the same way, as an SGR mouse click at the tapped cell, for
- * expand/collapse — untested whether Claude Code's TUI has mouse
- * reporting enabled at all vs. being keyboard-only for that.
+ * reuses Claude Code's own, already-working scroll handling. A tap
+ * sends Ctrl+O for the same reason, to expand/collapse a section — that
+ * turned out to be a real Claude Code keyboard shortcut (confirmed via
+ * its own GitHub issues), not a mouse click; an earlier version tried
+ * forwarding an SGR mouse click at the tapped cell instead, needing
+ * pixel-to-cell coordinate math for no benefit once it was clear
+ * Claude Code doesn't actually depend on click position for this.
  */
 @Composable
 fun TerminalScreen(
@@ -147,14 +149,15 @@ fun TerminalScreen(
         sendRaw("$esc[<$button;1;1M")
     }
 
-    // A tap forwarded as a real mouse click (SGR format: press then
-    // release) at the tapped cell -- see index.html's handleTap for the
-    // pixel-to-cell conversion. Only does anything if Claude Code's TUI
-    // has mouse reporting enabled *and* actually acts on clicks (vs.
-    // being keyboard-only for expand/collapse); untested either way.
-    fun sendMouseClick(col: Int, row: Int) {
-        sendRaw("$esc[<0;$col;${row}M")
-        sendRaw("$esc[<0;$col;${row}m")
+    // Expand/collapse in Claude Code is a keyboard shortcut (Ctrl+O),
+    // not a mouse click -- confirmed via its own GitHub issues; the
+    // click-a-toggle-icon alternative exists in some builds but is
+    // reported unreliable even on the PC itself. A tap anywhere on the
+    // terminal sends Ctrl+O rather than a coordinate-dependent mouse
+    // click, which needed sending mouse-reporting bytes Claude Code may
+    // not even be listening for. Ctrl+O is ASCII 0x0F.
+    fun sendExpandToggle() {
+        sendRaw("")
     }
 
     Column(modifier = modifier.fillMaxSize()) {
@@ -173,7 +176,7 @@ fun TerminalScreen(
                 onSwipePages = { pages ->
                     repeat(kotlin.math.abs(pages)) { sendScrollKey(down = pages > 0) }
                 },
-                onTap = { col, row -> sendMouseClick(col, row) },
+                onTap = { sendExpandToggle() },
                 onReady = { webView = it }
             )
             // A narrow side column, not the bottom button row: keeping
@@ -254,7 +257,7 @@ fun TerminalScreen(
 private fun TerminalWebView(
     modifier: Modifier = Modifier,
     onSwipePages: (Int) -> Unit,
-    onTap: (col: Int, row: Int) -> Unit,
+    onTap: () -> Unit,
     onReady: (WebView) -> Unit
 ) {
     val onSwipePagesState = rememberUpdatedState(onSwipePages)
@@ -268,19 +271,6 @@ private fun TerminalWebView(
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
                 settings.javaScriptEnabled = true
-                // JS calls window.Android.onTerminalTap(col, row) after
-                // converting a tap's pixel position to a terminal cell
-                // (see index.html's handleTap) -- kept as a real
-                // col/row->mouse-click conversion in JS since it already
-                // knows the current font size and scroll offsets; Kotlin
-                // only forwards the resulting cell onward as SGR mouse
-                // click bytes (see TerminalScreen's sendMouseClick).
-                addJavascriptInterface(object {
-                    @JavascriptInterface
-                    fun onTerminalTap(col: Int, row: Int) {
-                        onTapState.value(col, row)
-                    }
-                }, "Android")
                 // The terminal is not reflowed to fit the screen — it
                 // renders at the PC terminal's actual size, which is
                 // usually wider than the phone. Pinch-zoom lets you zoom
@@ -332,8 +322,7 @@ private fun TerminalWebView(
                     // same way clicking it on the PC does. e.getX/Y() are
                     // in device px; index.html's math is in CSS px.
                     override fun onSingleTapUp(e: MotionEvent): Boolean {
-                        val d = context.resources.displayMetrics.density
-                        this@apply.evaluateJavascript("handleTap(${e.x / d}, ${e.y / d})", null)
+                        onTapState.value()
                         return true
                     }
                 })
