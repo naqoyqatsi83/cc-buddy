@@ -7,12 +7,21 @@ android {
     namespace = "dev.ccbuddy.app"
     compileSdk = 34
 
+    // CI passes these for a tagged release build (-PreleaseVersionName=X.Y.Z
+    // -PreleaseVersionCode=<n>, derived from the git tag and the workflow
+    // run number -- see .github/workflows/build-apk.yml) so the APK's own
+    // version actually reflects what was tagged instead of staying frozen
+    // at whatever it was when the app was first scaffolded. Local/dev
+    // builds fall back to these defaults untouched.
+    val ciVersionName = (project.findProperty("releaseVersionName") as String?)
+    val ciVersionCode = (project.findProperty("releaseVersionCode") as String?)?.toIntOrNull()
+
     defaultConfig {
         applicationId = "dev.ccbuddy.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = ciVersionCode ?: 1
+        versionName = ciVersionName ?: "0.1.0"
     }
 
     buildTypes {
