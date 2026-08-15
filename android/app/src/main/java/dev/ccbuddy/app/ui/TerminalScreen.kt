@@ -7,25 +7,18 @@ import android.view.MotionEvent
 import android.view.ViewGroup
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,38 +26,36 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import dev.ccbuddy.app.data.TerminalBridge
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
 private val QUICK_REPLIES = listOf("1", "2", "y", "n", "")
 
 /**
- * Two panes again, but for a different reason than the original split:
- * History (top) is the daemon's independently-captured transcript — see
- * buddy-daemon/src/shadowTerminal.ts — rendered natively (Compose,
- * plain text, no WebView). Live (bottom) is the exact 1:1 raw-byte PC
- * mirror, restored after several independent-capture designs proved too
- * fragile against real usage (blank-line gaps after a daemon restart,
- * idle-refresh duplication, row-height bugs). Colors and exact layout
- * only ever worked reliably through this raw path.
+ * One full-screen view: the exact 1:1 raw-byte PC mirror. The
+ * independently-captured History pane (tried in several forms —
+ * linefeed watching, debounced snapshots, a tail/history split) was
+ * dropped entirely at the user's request rather than kept alongside —
+ * a two-pane screen was rejected regardless of what filled the second
+ * pane. Colors and exact layout only ever worked reliably through this
+ * raw path anyway.
  *
- * Scrolling Live now sends real key sequences into the PC's PTY instead
- * of manipulating a local buffer — a swipe becomes an arrow-key press
- * Claude Code's own TUI receives and scrolls with, same as pressing that
- * key at the PC. This trades independent phone-side scroll (impossible
- * to get right against an app that manages its own redraw-based scroll
- * state — see commit history) for something that actually works: the
- * PC's own scrolling, remote-controlled. Tap-to-expand collapsed
- * sections is NOT implemented — untested whether Claude Code's TUI
- * responds to mouse clicks at all vs. being keyboard-only for that.
+ * Scrolling now sends real key sequences into the PC's PTY instead of
+ * manipulating a local buffer — a swipe becomes a Page Up/Down press
+ * Claude Code's own TUI receives and scrolls with, same as pressing
+ * that key at the PC. (Arrow keys were tried first and were wrong —
+ * Claude Code's prompt treats them as command-history navigation, not
+ * transcript scroll.) This trades independent phone-side scroll
+ * (impossible to get right against a TUI that manages its own
+ * redraw-based scroll state — see commit history) for something that
+ * reuses Claude Code's own, already-working scroll handling. Tap-to-
+ * expand collapsed sections is NOT implemented — untested whether
+ * Claude Code's TUI responds to mouse clicks at all vs. being
+ * keyboard-only for that.
  */
 @Composable
 fun TerminalScreen(
@@ -119,9 +110,6 @@ fun TerminalScreen(
         }
     }
 
-    val transcript by (terminalBridge.transcriptFlow(peerId) ?: remember { MutableStateFlow(emptyList()) })
-        .collectAsState(initial = emptyList())
-
     fun send(text: String) {
         scope.launch { terminalBridge.sendInput(peerId, text) }
     }
@@ -130,15 +118,13 @@ fun TerminalScreen(
         scope.launch { terminalBridge.sendRaw(peerId, text) }
     }
 
-    // A swipe becomes this many arrow-key presses sent to the PC. Arrow
-    // keys, not Page Up/Down, on the theory that most TUIs reserve
-    // Page Up/Down for coarser jumps and treat arrows as the fine-grained
-    // scroll/navigate key — genuinely untested against Claude Code's
-    // specific TUI, may need to switch to [5~ / [6~ (Page
-    // Up/Down) instead if arrows turn out to do something else (e.g.
-    // moving an input cursor rather than scrolling).
+    // A swipe becomes a Page Up/Down press sent to the PC. Arrow keys
+    // were tried first and were wrong -- Claude Code's prompt treats
+    // them as command-history navigation (like a shell), not transcript
+    // scroll, so swiping was literally cycling through past prompts
+    // instead of scrolling.
     fun sendScrollKey(down: Boolean) {
-        sendRaw(if (down) "[B" else "[A")
+        sendRaw(if (down) "[6~" else "[5~")
     }
 
     Column(modifier = modifier.fillMaxSize()) {
@@ -150,50 +136,14 @@ fun TerminalScreen(
             Text(deviceName, modifier = Modifier.padding(top = 12.dp, end = 8.dp))
         }
 
-        // WebView doesn't reliably participate in Compose's weight()-based
-        // flexible measurement — with two weighted siblings sharing this
-        // Column, it ended up taking more space than its share (pushing
-        // the reply UI off-screen entirely) regardless of the requested
-        // weight. BoxWithConstraints measures the real available pixel
-        // height once, and both panes get an explicit height computed
-        // from it instead of a weight — deterministic regardless of how
-        // WebView behaves internally.
-        BoxWithConstraints(modifier = Modifier.fillMaxWidth().weight(1f)) {
-            val labelHeight = 20.dp
-            val splitHeight = maxHeight - labelHeight * 2
-            val historyHeight = splitHeight * 0.45f
-            val liveHeight = splitHeight - historyHeight
-            Column(modifier = Modifier.fillMaxSize()) {
-                Text(
-                    "History (independent, may show gaps right after a daemon restart)",
-                    style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.height(labelHeight).padding(horizontal = 8.dp)
-                )
-                TranscriptPane(
-                    lines = transcript,
-                    modifier = Modifier.fillMaxWidth().height(historyHeight)
-                )
-
-                Text(
-                    "Live (mirrors PC exactly — swipe scrolls the PC's own view)",
-                    style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.height(labelHeight).padding(horizontal = 8.dp)
-                )
-                TerminalWebView(
-                    modifier = Modifier.fillMaxWidth().height(liveHeight)
-                        .onSizeChanged { containerHeightCssPx = (it.height / density).toInt() },
-                    rows = rows,
-                    onSwipeLines = { lines ->
-                        // One key press per line-unit the swipe crossed —
-                        // not a single Page Up/Down per gesture, so short
-                        // vs. long swipes scroll proportionally, matching
-                        // the granularity the old local-buffer scroll had.
-                        repeat(kotlin.math.abs(lines)) { sendScrollKey(down = lines > 0) }
-                    },
-                    onReady = { webView = it }
-                )
-            }
-        }
+        TerminalWebView(
+            modifier = Modifier.fillMaxWidth().weight(1f)
+                .onSizeChanged { containerHeightCssPx = (it.height / density).toInt() },
+            onSwipePages = { pages ->
+                repeat(kotlin.math.abs(pages)) { sendScrollKey(down = pages > 0) }
+            },
+            onReady = { webView = it }
+        )
 
         Row(
             modifier = Modifier.fillMaxWidth().padding(8.dp),
@@ -233,38 +183,14 @@ fun TerminalScreen(
     }
 }
 
-/**
- * Plain, growing, independently-scrollable history — see
- * buddy-daemon/src/shadowTerminal.ts for how these lines are captured. A
- * LazyColumn appended to like this never fights the user's scroll
- * position (unlike the live pane, it's just static text growing over
- * time), so ordinary touch-scroll works with no special handling needed —
- * and scrolling it never affects, or is affected by, the PC.
- */
-@Composable
-private fun TranscriptPane(lines: List<String>, modifier: Modifier = Modifier) {
-    LazyColumn(modifier = modifier.background(Color(0xFF0D0D0D)).padding(horizontal = 4.dp)) {
-        items(lines) { line ->
-            Text(
-                text = line,
-                color = Color(0xFFE0E0E0),
-                fontFamily = FontFamily.Monospace,
-                fontSize = 12.sp
-            )
-        }
-    }
-}
-
 @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
 @Composable
 private fun TerminalWebView(
     modifier: Modifier = Modifier,
-    rows: Int,
-    onSwipeLines: (Int) -> Unit,
+    onSwipePages: (Int) -> Unit,
     onReady: (WebView) -> Unit
 ) {
-    val rowsState = rememberUpdatedState(rows)
-    val onSwipeLinesState = rememberUpdatedState(onSwipeLines)
+    val onSwipePagesState = rememberUpdatedState(onSwipePages)
     AndroidView(
         modifier = modifier,
         factory = { context ->
@@ -284,11 +210,14 @@ private fun TerminalWebView(
                 settings.builtInZoomControls = true
                 settings.displayZoomControls = false
 
-                // A vertical drag here sends real key presses to the PC
-                // (see onSwipeLines above) instead of scrolling a local
-                // xterm buffer — Claude Code manages its own scroll state
-                // via redraws, so there's no local buffer that scrolling
-                // could meaningfully affect independent of the PC anyway.
+                // A vertical drag here sends real Page Up/Down presses to
+                // the PC (see onSwipePages above) instead of scrolling a
+                // local xterm buffer — Claude Code manages its own scroll
+                // state via redraws, so there's no local buffer that
+                // scrolling could meaningfully affect independent of the
+                // PC anyway. One page per ~70% of this view's own height
+                // dragged, so a near-full-screen swipe is roughly one
+                // page, matching how swiping normally feels.
                 val gestureDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
                     var accumulatedY = 0f
 
@@ -299,19 +228,19 @@ private fun TerminalWebView(
                         distanceY: Float
                     ): Boolean {
                         if (kotlin.math.abs(distanceY) <= kotlin.math.abs(distanceX)) return false
-                        val rowHeightPx = height / rowsState.value.coerceAtLeast(1)
-                        if (rowHeightPx <= 0) return false
+                        val pageThresholdPx = height * 0.7f
+                        if (pageThresholdPx <= 0) return false
                         accumulatedY += distanceY
-                        var lines = 0
-                        while (accumulatedY >= rowHeightPx) {
-                            accumulatedY -= rowHeightPx
-                            lines++
+                        var pages = 0
+                        while (accumulatedY >= pageThresholdPx) {
+                            accumulatedY -= pageThresholdPx
+                            pages++
                         }
-                        while (accumulatedY <= -rowHeightPx) {
-                            accumulatedY += rowHeightPx
-                            lines--
+                        while (accumulatedY <= -pageThresholdPx) {
+                            accumulatedY += pageThresholdPx
+                            pages--
                         }
-                        if (lines != 0) onSwipeLinesState.value(lines)
+                        if (pages != 0) onSwipePagesState.value(pages)
                         return true
                     }
                 })
