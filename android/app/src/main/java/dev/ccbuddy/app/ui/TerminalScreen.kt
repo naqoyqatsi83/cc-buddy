@@ -315,13 +315,15 @@ private fun TerminalWebView(
                         return true
                     }
 
-                    // A plain tap, not a drag -- forwarded as a mouse
-                    // click at the tapped terminal cell (see the JS
-                    // interface above and handleTap in index.html) so
-                    // expand/collapse on a collapsed section can work the
-                    // same way clicking it on the PC does. e.getX/Y() are
-                    // in device px; index.html's math is in CSS px.
-                    override fun onSingleTapUp(e: MotionEvent): Boolean {
+                    // Double-tap, not single-tap: a single tap consuming
+                    // every tap (to send Ctrl+O) fought with the WebView's
+                    // own pinch/double-tap zoom handling -- reported as
+                    // "suddenly I can't zoom" once single-tap forwarding
+                    // was added. Double-tap is unambiguous with a normal
+                    // tap, which now falls through to the WebView
+                    // untouched, and is still distinct from pinch-zoom
+                    // (two fingers).
+                    override fun onDoubleTap(e: MotionEvent): Boolean {
                         onTapState.value()
                         return true
                     }
