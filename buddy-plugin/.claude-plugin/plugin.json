@@ -2,5 +2,8 @@
   "name": "cc-buddy",
   "version": "0.1.0",
   "description": "Pair this Claude Code session with the CC Buddy Android app (/buddy-scan, /buddy-pair, /buddy-list, /buddy-unpair)",
+  "author": {
+    "name": "naqoyqatsi83"
+  },
   "commands": "./commands"
 }

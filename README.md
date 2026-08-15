@@ -1,295 +1,163 @@
-# CC Buddy
+<div align="center">
 
-Pair a Claude Code terminal session with an Android phone: live mirror,
-push notifications when Claude is waiting on input, and reply injection
-from the phone. See `buddy-cc-android-pairing-spec.md` for the full design.
+# 📱 CC Buddy
 
-## Layout
+Pair a Claude Code terminal session with your Android phone: live mirror, push notifications, and reply from the couch.
 
-- `buddy-daemon/` — Node.js/TypeScript daemon. `buddy start` wraps `claude`
-  in a PTY (via `node-pty`) and exposes a localhost-only control API used
-  by the plugin commands and by Claude Code's HTTP hooks.
-- `buddy-plugin/` — Claude Code plugin providing `/buddy-scan`,
-  `/buddy-pair`, `/buddy-list`, `/buddy-unpair`. Thin wrappers over the
-  daemon's control API via `BUDDY_DAEMON_URL` / `BUDDY_SESSION_ID`.
-- `android/` — CC Buddy Android app (Kotlin + Jetpack Compose). Foreground
-  service, embedded Ktor WS server on port 8765, PIN pairing handshake,
-  paired-session list, and a live xterm.js terminal mirror with reply
-  injection.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
+[![Platform: Node.js](https://img.shields.io/badge/daemon-node.js%2018%2B-339933.svg?style=for-the-badge&logo=node.js&logoColor=white)](buddy-daemon)
+[![Platform: Android](https://img.shields.io/badge/app-android-3ddc84.svg?style=for-the-badge&logo=android&logoColor=white)](android)
+[![Claude Code Plugin](https://img.shields.io/badge/claude%20code-plugin-D97757.svg?style=for-the-badge)](buddy-plugin)
 
-## Status
+Claude Code keeps working on your machine. Your phone gets a live terminal, a nudge when it needs you, and a way to answer back — no cloud relay, no accounts, pairs directly over your LAN or Tailscale.
 
-Build order (from the spec) so far:
+[Quick Start](#quick-start) · [How it works](#how-it-works) · [Commands](#commands) · [Manage your installation](#manage-your-installation) · [Build from source](#build-from-source)
 
-- [x] 1. `buddy-daemon` skeleton — `buddy start` spawns `claude` in a PTY
-      and transparently proxies the real terminal.
-- [x] 2. Localhost control API (`/sessions`, `/scan`, `/pair`, `/peers`,
-      `/unpair`, `/hook/*`) + the four `/buddy-*` commands.
-- [x] 3. Android app MVP (foreground service + embedded Ktor WS server +
-      PIN pairing screen + accept/deny prompt + paired-session list).
-- [x] 4. PTY streaming: daemon forwards raw PTY output over the pairing
-      WS as `pty_data` frames; phone renders it with a bundled xterm.js
-      in a WebView.
-- [x] 5. Reply injection: phone sends `input` frames (quick-reply buttons
-      or the text field's Send button), daemon writes them into the PTY
-      as `text + "\r"`.
-- [x] 6. Claude Code HTTP hooks wired to push notifications —
-      `buddy start` writes Notification/Stop/PreToolUse HTTP hooks into
-      `.claude/settings.local.json` pointing at the session's control
-      port; the daemon forwards them to paired phone(s), which shows a
-      real high-importance Android notification ("Claude needs you") on
-      Notification and clears it on Stop. Verified end-to-end on the
-      emulator with real hook POSTs.
-- [x] 7. mDNS discovery both sides — Android advertises `_buddycc._tcp`
-      via `NsdManager`; daemon browses for it via `bonjour-service`.
-      Verified working discovery in both directions (Android → host and
-      standalone host round-trip) when nothing else on the host
-      contends for UDP 5353. Note: on a machine already running
-      `avahi-daemon` and/or `adb`'s own mDNS listener (both bind port
-      5353), the kernel delivers each multicast response to only one of
-      the competing sockets, so `/buddy-scan` can miss it non-
-      deterministically — a host-environment quirk, not a bug in this
-      code; manual `/buddy-pair <ip> <pin>` is unaffected either way.
-- [x] 8. Tailscale — pairing itself needed no special code (the daemon's
-      WS client just dials whatever `ip:port` it's given, same code path
-      regardless of address range). What did need fixing: the phone was
-      only labeling an address "Tailscale" if the network interface name
-      literally contained "tailscale", which Android's Tailscale app
-      (a generic VpnService `tun*` interface) never does — so the IP
-      just silently showed up unlabeled, or not at all if mDNS also
-      couldn't reach it (mDNS doesn't route over the VPN). Now detected
-      by the 100.64.0.0/10 CGNAT range Tailscale actually assigns from,
-      regardless of interface name. Verified on the emulator by
-      attaching a real 100.x address to an unrelated dummy interface
-      (`dummy0`) via `adb root` + `ip addr add` — the app correctly
-      labeled and displayed it.
-- Phase 2 (not part of the numbered build order):
-  - [x] Encrypted token storage hardening — PC-side pairing tokens now
-        live in the OS keychain via `keytar` instead of a plaintext
-        file (Android already used `EncryptedSharedPreferences`).
-        Verified: token appears in the OS keychain, not in
-        `~/.buddy/peers.json`; unpairing removes it from both.
-  - [x] Multi-session UI — one phone pairing with several PC sessions
-        at once now mirrors and controls each independently instead of
-        the second connection silently stealing the first's input
-        routing and mixing its output into the same stream. Verified
-        two simultaneous fake daemon sessions on the emulator: switching
-        between them shows each one's correct isolated backlog, and a
-        reply typed for session B only reaches session B's PTY. This
-        testing round caught two real bugs beyond the core feature: (1)
-        the terminal's WebView signaled "ready" immediately after
-        `loadUrl()`, before the page's JS had actually finished loading,
-        so replayed output silently failed to render on every session
-        switch (fixed: wait for `onPageFinished`); (2) a second PC
-        session connecting while the user had deliberately returned to
-        the session list would auto-navigate them into a session they'd
-        already seen instead of just updating the list quietly (fixed:
-        auto-open only the very first bridge of the app's lifetime).
-- Bug fixes reported from real-device use (not part of the build order):
-  - [x] Terminal mirror garbled and wrapped instead of matching the PC
-        terminal — Claude Code's TUI uses absolute cursor positioning
-        sized for the PC's actual terminal (often 100+ columns); the
-        phone's xterm.js was auto-fitting to the phone's own (much
-        narrower) width, so the exact same bytes rendered as
-        overlapping/scrambled text at a different column count. Fixed
-        by having the daemon forward the PC terminal's real cols/rows
-        (once at pairing, again on resize) and mirroring that size
-        exactly on the phone instead of reflowing — long lines now clip
-        cleanly and the WebView allows 2D pinch-zoom/scroll to pan
-        around the full-size terminal, plus a dynamic font-size
-        heuristic to make better use of the phone's screen height.
-        Verified on the emulator with a genuine 156×40 PTY (matching a
-        real reported screenshot) piping realistic Claude Code TUI
-        content: box-drawing renders cleanly, long lines clip instead
-        of garbling, and horizontal scroll correctly reveals the
-        clipped content undamaged.
-  - [x] Vertical scroll, prompt-at-bottom, font-shrinks-on-resize — went
-        through two attempts here, and the first one was wrong in a way
-        worth recording. Attempt 1 decoupled the phone's *row* count from
-        the PC's (kept columns mirrored, computed rows locally from a
-        fixed font size), reasoning that rows were purely a "how much
-        fits on screen" concern like resizing a terminal window. On real
-        Claude Code output this caused actual corruption — a missing
-        header, content overwriting itself — not just a cosmetic
-        mismatch. Root cause: Claude Code's TUI uses scroll regions
-        (DECSTBM) sized to the real PTY dimensions to keep a header/footer
-        fixed while the middle scrolls; that technique is exact-row-count
-        sensitive, unlike simple absolute cursor addressing which just
-        clamps harmlessly to a smaller grid. There's no way to know in
-        advance which redraw technique a given TUI uses, so a remote
-        mirror has to match the real terminal size exactly, full stop —
-        reverted to mirroring both rows and columns. Font size is instead
-        chosen (rounding up) so the real row count fills the phone's
-        height, which still gets prompt-at-bottom (xterm auto-scrolls to
-        its newest line) and working native scrollback for anything that
-        scrolls off, without touching correctness. Also fixed the
-        "glitch right after pairing": buffered output was replaying
-        before the initial size had been applied, rendering into the
-        wrong grid and then visibly reflowing the instant the resize
-        landed a moment later.
+</div>
 
-        Verified on the emulator: no startup glitch, prompt flush at the
-        bottom, and swiping scrolls smoothly through backlog.
+<div align="center">
+  <img src="assets/pairing-screen.png" alt="CC Buddy Android pairing screen" width="300">
+  <img src="assets/settings-screen.png" alt="CC Buddy Android settings screen" width="300">
+  <p><em>Pairing screen (PIN, addresses, paired sessions) and the settings screen (font size, compact mode).</em></p>
+</div>
 
-        A follow-up bug also surfaced and got fixed: bursts of output
-        could silently stop advancing on screen partway through, even
-        though the daemon logs confirmed it sent everything (including
-        the trailing prompt). Root cause: xterm.js only auto-follows new
-        output while the viewport is already pinned to the bottom — it
-        won't yank the view away if it thinks the user scrolled up, which
-        is normally the right call, but `resizeTerm()`'s `term.resize()`
-        (called again by the size-flow subscriber, potentially mid-burst)
-        can itself perturb the scroll position, at which point xterm
-        stops following and every later chunk lands off-screen. Fixed by
-        explicitly forcing `term.scrollToBottom()` after every resize and
-        after every write's parse callback (not synchronously after
-        `term.write()`, which is async internally and would race the
-        still-pending render). Re-verified the same freeze scenario twice
-        on the emulator, including the original box-drawing-header
-        reproduction — content now reaches the final prompt both times.
+## What You Get
 
-        Two more real-device reports followed: vertical scroll still
-        didn't work at all, and a status line placed below the prompt
-        (below the terminal's last active row) was invisible. Both traced
-        back to earlier decisions in this same fix that turned out to be
-        wrong:
-        - The font-size heuristic rounded *up* so the real row count would
-          "at least" fill the screen, reasoning any overshoot just becomes
-          scrollable. That's wrong for the terminal's active grid — it's a
-          fixed-size screen, not itself scrollable, so overshoot doesn't
-          create scrollable space, it silently clips whatever's in the
-          bottom row(s) off-screen with no way to reach it. Switched to
-          rounding *down* so the whole active grid always fits.
-        - Native WebView pinch-zoom/pan (`setSupportZoom`,
-          `builtInZoomControls`, `useWideViewPort`) had been enabled to
-          help navigate the wider-than-phone terminal. That was the wrong
-          mechanism — it captures single-finger drag gestures for the
-          WebView's own page panning, starving xterm.js's internal
-          scrollback viewport of the touch events it needs, which is why
-          vertical scroll did nothing. Horizontal panning doesn't need
-          WebView-level zoom at all — plain CSS `overflow-x:auto` (already
-          in place) scrolls via ordinary touch-drag on its own. Disabled
-          the native zoom/pan settings entirely.
+- Wrap any `claude` session with `buddy start` — it behaves exactly like `claude`, nothing changes about how you work.
+- Pair a phone by scanning the LAN (`/buddy-scan`) or typing an IP + 6-digit PIN (`/buddy-pair`), works over Wi-Fi or Tailscale.
+- Live, byte-exact terminal mirror on the phone (real xterm.js, not a screenshot) — sized to match your actual PTY so TUI redraws (box-drawing, scroll regions, status lines) render correctly.
+- Push notification when Claude is waiting on you, cleared automatically once you're back.
+- Reply from the phone: quick-reply buttons, a text field, or raw keystrokes (Tab, Page Up/Down, scroll wheel, Ctrl+O expand/collapse) sent straight into the PTY.
+- Pair one phone with several PC sessions at once, switch between them from a single session list.
+- Runs entirely on your LAN/Tailscale — the daemon only ever dials out to a phone IP you gave it; pairing tokens live in your OS keychain (`keytar` on the PC, `EncryptedSharedPreferences` on Android), not a plaintext file.
 
-        Verified on the emulator: a status line placed below the prompt
-        is now visible, and repeated swipe gestures accumulate to reveal
-        real scrollback (walked from the newest line back ~45 lines of
-        history that had scrolled off-screen).
+## Quick Start
 
-        Real-device testing (a Galaxy A54) showed emulator verification
-        isn't a reliable substitute: vertical scroll worked in the
-        emulator's WebView but did nothing at all on the real device, and
-        zoom being disabled was reported as a regression rather than a fix.
-        Root cause for the scroll gap: relying on the WebView's native
-        touch-to-DOM-scroll handling of xterm's own internal scrollback
-        viewport is inconsistent across WebView versions. Replaced with an
-        explicit `GestureDetector` on the Android side that calls xterm's
-        own `scrollLines()` API directly for vertical drags, leaving
-        horizontal drags and pinch-zoom (re-enabled) to native handling —
-        decoupled from whatever the WebView's internal scroll dispatch
-        does or doesn't do.
+### 1. Clone and install
 
-  - [x] Independent phone-side scroll/expand (`buddy-cc-android-pairing-spec.md`
-        follow-up, not originally scoped): the user's real expectation
-        turned out to be that the phone should have its own scrollable
-        view of everything ever shown, decoupled from the PC — not a pure
-        1:1 mirror. Investigation revealed *why* 1:1 mirroring is what we
-        had: Claude Code's TUI (like btop/k9s/lazygit) renders into a
-        fixed-size screen and manages its own scroll/expand state inside
-        the process itself, redrawing via cursor addressing rather than
-        the terminal's native scrollback — so PC and phone were sharing
-        exactly one live, in-place-redrawing view; there was no
-        independent buffer for the phone to scroll into, and PC-side
-        scrolling visibly redrew the phone too.
+```bash
+git clone https://github.com/naqoyqatsi83/cc-buddy.git
+cd cc-buddy
+./scripts/install.sh
+```
 
-        Added a genuinely independent second view: the daemon now runs a
-        second, headless instance of the *same terminal emulator*
-        (`@xterm/headless`, in `buddy-daemon/src/shadowTerminal.ts`) fed
-        the identical PTY byte stream, and periodically (debounced 500ms
-        after output settles) snapshots its whole active screen, appending
-        it to a growing transcript whenever it differs from the last
-        snapshot — capturing every distinct screen the user was ever shown
-        regardless of whether it arrived via linefeeds or the app's own
-        redraw-based paging. (An earlier version tried to detect "history"
-        by watching for genuine linefeed-based scrollback growth, on the
-        theory that real terminal apps mostly behave like a plain shell;
-        that never fired at all against actual Claude Code output, only
-        against synthetic `printf`-based test scripts — the debounced
-        snapshot approach was needed once it became clear Claude Code
-        doesn't rely on linefeed-based scrolling for its own view either.)
-        The full transcript is sent once on pairing (`transcript_init`)
-        and appended to live (`transcript_append`); the phone renders it
-        as a separate, plain-text, natively-scrollable pane (Compose
-        `LazyColumn`, no WebView/xterm involved) above the existing 1:1
-        "Live" mirror, which keeps showing the PC's current screen exactly
-        as before — genuinely shared live state that can't be decoupled,
-        now clearly labeled as such instead of being confused with
-        history.
+Windows (PowerShell):
 
-        This surfaced a real, separate rendering bug while testing against
-        an unusually tall real terminal (86 rows — much taller than
-        anything tested before): the active grid's font-size math assumed
-        `window.innerHeight` reliably reflected the WebView's actual
-        Compose-allocated height, and separately assumed Compose's
-        `onSizeChanged` reports CSS pixels — neither held (the former
-        didn't track Compose layout changes; the latter reports raw
-        physical pixels, ~2.75x too large on this device's density,
-        uncorrected). Together these could size the font for an area far
-        bigger than what the WebView could actually show, silently
-        clipping the bottom of the active grid (statusline/prompt) with no
-        scrollback mechanism able to reach it (only genuine linefeed
-        scrollback is scrollable; an active grid that's simply too tall
-        for its container is not). A same-day follow-on attempt to also
-        fix wasted blank space for short/sparse sessions (sizing to the
-        cursor's row instead of the full grid) caused a full regression
-        — the Live pane went completely blank — for reasons not fully
-        root-caused before reverting; given a blank pane on every normal
-        short conversation is a worse failure mode than clipping on an
-        unusually tall, densely-packed terminal, that refinement was
-        reverted and is left as a known follow-up rather than shipped
-        half-verified.
-  - [x] No way to send Tab from the phone (e.g. to accept an autocomplete
-        suggestion) — the existing quick-reply buttons and text field
-        always append Enter, which Tab must never get. Added a `raw_input`
-        message type alongside the existing `input` type (daemon writes
-        it to the PTY with no trailing `\r`) and a Tab (⇥) button that
-        uses it. Verified the daemon received and correctly wrote a bare
-        tab byte to the PTY.
-  - [ ] FCM for notifications when the app's fully backgrounded/killed —
-        needs a Firebase project and a small cloud relay service, both
-        requiring external account setup this environment can't do
-        autonomously. Deliberately skipped for now: the foreground
-        service already delivers notifications while the app is merely
-        backgrounded, which covers the common case. Revisit if
-        killed-app notifications turn out to matter in practice.
+```powershell
+git clone https://github.com/naqoyqatsi83/cc-buddy.git
+cd cc-buddy
+.\scripts\install.ps1
+```
 
-## Try it (daemon only, no phone yet)
+This builds the daemon, links a `buddy` command onto your `PATH`, and installs the `cc-buddy` Claude Code plugin (`/buddy-scan`, `/buddy-pair`, `/buddy-list`, `/buddy-unpair`). Restart any open Claude Code sessions afterward. Re-run the same command any time you `git pull` to update — see [Manage your installation](#manage-your-installation).
+
+### 2. Start a paired session
+
+```bash
+buddy start --cwd /path/to/your/project
+```
+
+This behaves exactly like running `claude` directly — same session, same everything — but now `/buddy-*` commands work inside it.
+
+### 3. Install the Android app
+
+Grab the APK from [Releases](../../releases), or build it yourself:
+
+```bash
+cd android
+./gradlew assembleDebug
+adb install app/build/outputs/apk/debug/app-debug.apk
+```
+
+Open the app and grant the notification permission — it shows a 6-digit PIN and this phone's local IPs (Wi-Fi / Tailscale).
+
+### 4. Pair
+
+From the `buddy start` session on your PC:
 
 ```
+/buddy-scan
+/buddy-pair <ip> <pin>
+```
+
+A pairing request pops up on the phone — accept it, and the terminal mirror opens.
+
+## How it works
+
+```
+┌─────────────────────┐          LAN / Tailscale          ┌──────────────────────┐
+│   buddy start        │◄──────── WebSocket (PIN) ────────►│   CC Buddy Android    │
+│  (wraps `claude` in   │                                    │  Ktor WS server :8765 │
+│   a PTY, node-pty)     │──── raw PTY bytes, resize ───────►│  xterm.js mirror       │
+│                        │◄──── input / raw keystrokes ──────│  reply UI              │
+│  Claude Code HTTP     │                                    │  push notification     │
+│  hooks (Notification, │──── waiting-for-you event ────────►│  on Notification hook  │
+│  Stop, PreToolUse)     │                                    │                        │
+└─────────────────────┘                                    └──────────────────────┘
+```
+
+The daemon spawns `claude` inside a real PTY sized to match your terminal, so anything the TUI does (scroll regions, absolute cursor addressing, box-drawing) mirrors byte-for-byte on the phone instead of reflowing or garbling. Claude Code's own HTTP hooks tell the daemon when a session is waiting on you; the daemon forwards that to every paired, connected phone as a real Android notification.
+
+## Commands
+
+| Command | What it does |
+|---|---|
+| `/buddy-scan` | Browse the LAN for phones advertising `_buddycc._tcp` (mDNS) |
+| `/buddy-pair <ip> <pin>` | Pair with a phone by address and the PIN shown on its screen |
+| `/buddy-list` | List phones paired to this session, with online/offline status |
+| `/buddy-unpair [peer_id]` | Unpair a phone (prompts if more than one is paired) |
+
+## Manage your installation
+
+Re-run the installer any time — it's idempotent, and picks up whatever changed after a `git pull`:
+
+```bash
+git pull
+./scripts/install.sh update      # or just: ./scripts/install.sh
+```
+
+To remove CC Buddy entirely (unlinks the `buddy` command, uninstalls the Claude Code plugin, deregisters the marketplace):
+
+```bash
+./scripts/install.sh uninstall
+```
+
+Windows: `.\scripts\install.ps1 update` / `.\scripts\install.ps1 uninstall`. Your local checkout isn't deleted by either script — remove the folder yourself if you're done with it.
+
+## Build from source
+
+<details>
+<summary>Daemon only (no phone yet)</summary>
+
+```bash
 cd buddy-daemon
 npm install
 npm run build
 node dist/cli.js start --cwd /path/to/your/project
 ```
 
-This should behave exactly like running `claude` directly. Once a
-`BUDDY_DAEMON_URL`/`BUDDY_SESSION_ID`-aware session is running, the
-`/buddy-*` commands work from inside it — `/buddy-scan` browses for
-phones advertising `_buddycc._tcp` (see the mDNS caveat above), and
-`/buddy-pair <ip> <pin>` always works against a real phone running the
-Android app below regardless of scan reliability.
+This behaves exactly like running `claude` directly.
+</details>
 
-## Try it (Android app)
+<details>
+<summary>Android app</summary>
 
-```
+```bash
 cd android
 ./gradlew assembleDebug
 adb install app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Open the app, grant the notification permission, and it'll show a 6-digit
-PIN plus this phone's local IPs (Wi-Fi / Tailscale). From a `buddy start`
-session on the PC (same LAN or same Tailscale network), run
-`/buddy-pair <ip> <pin>` — a pairing request will pop up on the phone to
-accept or deny. Building requires the Android SDK (platform 34,
-build-tools 34.0.0); `android/local.properties` (gitignored) points at it.
+Requires the Android SDK (platform 34, build-tools 34.0.0); `android/local.properties` (gitignored) should point at it.
+</details>
+
+## Project layout
+
+- `buddy-daemon/` — Node.js/TypeScript daemon. `buddy start` wraps `claude` in a PTY (`node-pty`) and exposes a localhost-only control API used by the plugin commands and Claude Code's HTTP hooks.
+- `buddy-plugin/` — Claude Code plugin providing `/buddy-scan`, `/buddy-pair`, `/buddy-list`, `/buddy-unpair`. Thin wrappers over the daemon's control API.
+- `android/` — CC Buddy Android app (Kotlin + Jetpack Compose). Foreground service, embedded Ktor WebSocket server, PIN pairing handshake, paired-session list, and a live xterm.js terminal mirror with reply injection.
+- `scripts/` — `install.sh` / `install.ps1`: install, update, and uninstall the daemon + Claude Code plugin.
+
+## License
+
+MIT — see [LICENSE](LICENSE).

@@ -1,0 +1,14 @@
+{
+  "name": "cc-buddy-marketplace",
+  "description": "CC Buddy: pair a Claude Code terminal session with the CC Buddy Android app for live mirroring, push notifications, and reply injection.",
+  "owner": {
+    "name": "naqoyqatsi83"
+  },
+  "plugins": [
+    {
+      "name": "cc-buddy",
+      "source": "./buddy-plugin",
+      "description": "Pair this Claude Code session with the CC Buddy Android app (/buddy-scan, /buddy-pair, /buddy-list, /buddy-unpair)"
+    }
+  ]
+}
