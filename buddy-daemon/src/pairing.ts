@@ -34,7 +34,7 @@ export function pairWithPhone(
         JSON.stringify({
           type: "pair_request",
           pin,
-          device_name: hostDeviceName(),
+          device_name: hostDeviceName(session.info.cwd),
         })
       );
     });
@@ -96,9 +96,13 @@ export async function unpairPeer(session: BuddySession, peerId: string): Promise
 // paired -- login@hostname:cwd (e.g. "gus@laptop:cc-buddy") mirrors what
 // you'd see in a real terminal prompt and is enough to tell sessions apart
 // at a glance on the phone.
-function hostDeviceName(): string {
+function hostDeviceName(sessionCwd: string): string {
   const user = os.userInfo().username || "user";
   const host = (process.env.COMPUTERNAME || os.hostname() || "PC").split(".")[0];
-  const cwd = path.basename(process.cwd()) || "/";
+  // The session's own --cwd (the project being worked on), not
+  // process.cwd() -- that's wherever `buddy` itself was invoked from,
+  // which is frequently the daemon's own install directory rather than
+  // the project the user is actually pairing to look at.
+  const cwd = path.basename(sessionCwd) || "/";
   return `${user}@${host}:${cwd}`;
 }
