@@ -7,12 +7,14 @@ import android.view.MotionEvent
 import android.view.ViewGroup
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -146,9 +148,22 @@ fun TerminalScreen(
         )
 
         Row(
-            modifier = Modifier.fillMaxWidth().padding(8.dp),
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(8.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
+            // First, not last: these are the primary new control, and
+            // horizontal scroll to reach them (if this row overflows a
+            // narrow screen) shouldn't be required for the most-used
+            // buttons. Explicit taps, not just the swipe gesture above --
+            // swipe detection has repeatedly proven unreliable on real
+            // devices throughout this project (works in an emulator, does
+            // nothing on real hardware).
+            TextButton(onClick = { sendScrollKey(down = false) }) {
+                Text("▲ PgUp")
+            }
+            TextButton(onClick = { sendScrollKey(down = true) }) {
+                Text("▼ PgDn")
+            }
             QUICK_REPLIES.forEach { reply ->
                 TextButton(onClick = { send(reply) }) {
                     Text(reply.ifEmpty { "⏎" })
