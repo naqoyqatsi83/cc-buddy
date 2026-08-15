@@ -197,12 +197,12 @@ fun TerminalScreen(
                     onClick = { sendScrollWheel(down = false) },
                     contentPadding = sideButtonPadding,
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("⏶") }
+                ) { Text("△") }
                 TextButton(
                     onClick = { sendScrollWheel(down = true) },
                     contentPadding = sideButtonPadding,
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("⏷") }
+                ) { Text("▽") }
                 TextButton(
                     onClick = { sendScrollKey(down = true) },
                     contentPadding = sideButtonPadding,
