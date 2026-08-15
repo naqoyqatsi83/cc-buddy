@@ -1,5 +1,7 @@
 import * as pty from "node-pty";
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
+import * as path from "node:path";
 import type { IPty } from "node-pty";
 import type { SessionInfo } from "./types.js";
 import { ShadowTerminal } from "./shadowTerminal.js";
@@ -41,8 +43,28 @@ export interface StartSessionOptions {
   claudeArgs: string[];
 }
 
+// node-pty's Windows backend spawns by exact filename -- unlike a normal
+// shell, it does *not* consult PATHEXT to fill in an extension, so "claude"
+// alone throws "File not found" even though it resolves fine everywhere
+// else. Depending on how Claude Code was installed, the executable on PATH
+// may be claude.exe (native installer), claude.cmd, or claude.bat (npm
+// global install) -- so search PATH ourselves instead of hardcoding one.
+const resolveWindowsClaude = () => {
+  const dirs = (process.env.PATH ?? "").split(path.delimiter);
+  for (const ext of [".exe", ".cmd", ".bat"]) {
+    for (const dir of dirs) {
+      if (dir && existsSync(path.join(dir, `claude${ext}`))) {
+        return `claude${ext}`;
+      }
+    }
+  }
+  // Fall back to the npm-install convention; the resulting spawn error will
+  // at least name the file it looked for.
+  return "claude.cmd";
+};
+
 const shellForPlatform = () =>
-  process.platform === "win32" ? "claude.cmd" : "claude";
+  process.platform === "win32" ? resolveWindowsClaude() : "claude";
 
 /**
  * Spawns `claude` inside a PTY and wires the *real* process stdio to it, so
