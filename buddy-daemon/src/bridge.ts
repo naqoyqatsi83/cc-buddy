@@ -26,6 +26,24 @@ export function attachBridge(session: BuddySession, peerId: string, ws: WebSocke
   sendResize();
   const unsubscribeResize = session.onResize(sendResize);
 
+  // A brand-new WS connection (fresh pairing, or reconnecting after the
+  // app was killed/reinstalled) has only ever seen node-pty's raw output
+  // as a live stream -- there's no backlog to replay. But Claude Code's
+  // TUI paints its screen once and then only touches the cells that
+  // change, so a mirror that starts from this point receives nothing for
+  // whatever hasn't changed since -- the status bar/prompt look blank
+  // even though the real PC terminal has always shown them, until enough
+  // new content eventually forces a genuine full redraw. Repaint the
+  // phone's screen from the ShadowTerminal's current state first, as an
+  // ordinary pty_data chunk, so it's fully caught up before any live
+  // deltas arrive.
+  if (ws.readyState === WebSocket.OPEN) {
+    const snapshot = session.getSnapshot();
+    if (snapshot) {
+      ws.send(JSON.stringify({ type: "pty_data", data: snapshot }));
+    }
+  }
+
   // Full history so far (see ShadowTerminal), sent once up front so the
   // phone's independent scrollback pane starts complete instead of empty
   // — then just the new lines as they're captured.

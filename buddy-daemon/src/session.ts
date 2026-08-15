@@ -29,6 +29,10 @@ export interface BuddySession {
   tail: string[];
   /** Fires whenever the tail changes (wholesale replace, not append). */
   onTailUpdate: (listener: (lines: string[]) => void) => () => void;
+  /** ANSI reconstruction of the PTY's current active screen (see
+   * ShadowTerminal.getSnapshotAnsi) -- sent to a newly-attaching phone
+   * before live deltas so it starts fully painted instead of blank. */
+  getSnapshot: () => string;
 }
 
 export interface StartSessionOptions {
@@ -150,5 +154,6 @@ export function startSession(opts: StartSessionOptions): BuddySession {
       tailListeners.add(listener);
       return () => tailListeners.delete(listener);
     },
+    getSnapshot: () => shadow.getSnapshotAnsi(),
   };
 }

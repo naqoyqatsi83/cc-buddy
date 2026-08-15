@@ -1,5 +1,6 @@
 import pkg from "@xterm/headless";
 import type { Terminal as TerminalType } from "@xterm/headless";
+import { SerializeAddon } from "@xterm/addon-serialize";
 const { Terminal } = pkg;
 
 /**
@@ -47,6 +48,7 @@ const TAIL_MAX_LINES = 6;
 
 export class ShadowTerminal {
   private term: TerminalType;
+  private serializeAddon: SerializeAddon;
   private capturedBoundary = 0; // buffer index up to which history is already sent
   private lastAppendedBlock: string[] = [];
   // Some TUIs (this one included) periodically re-render their idle
@@ -67,10 +69,34 @@ export class ShadowTerminal {
     private onTailUpdate: (lines: string[]) => void
   ) {
     this.term = new Terminal({ cols, rows, scrollback: 100_000, allowProposedApi: true });
+    this.serializeAddon = new SerializeAddon();
+    this.term.loadAddon(this.serializeAddon);
   }
 
   resize(cols: number, rows: number) {
     this.term.resize(cols, rows);
+  }
+
+  /**
+   * A fresh phone WS connection only ever receives *future* PTY deltas
+   * (raw node-pty output is a live stream, not a replayable log) -- but
+   * Claude Code's TUI paints most of its screen once and then only
+   * touches the few cells that actually change (absolute cursor
+   * addressing + targeted overwrites), to avoid redrawing the whole
+   * screen on every tick. A phone that (re)connects mid-session never
+   * received that original full paint, so anything not touched by a
+   * later incremental update stays blank on the phone even though the
+   * real PC terminal has always shown it -- reported as the status
+   * bar/prompt going missing after a reconnect, self-"fixing" only once
+   * enough new content forces a genuine full redraw. This reconstructs
+   * an ANSI sequence (colors, cursor position, everything) that repaints
+   * the current active screen from scratch, for a new connection to
+   * apply before it starts receiving live deltas. `scrollback: 0` limits
+   * it to the active screen -- the live mirror doesn't use xterm's
+   * scrollback pane, so there's no point sending it.
+   */
+  getSnapshotAnsi(): string {
+    return this.serializeAddon.serialize({ scrollback: 0 });
   }
 
   write(chunk: string) {

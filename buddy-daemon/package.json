@@ -12,6 +12,7 @@
     "start": "node dist/cli.js"
   },
   "dependencies": {
+    "@xterm/addon-serialize": "^0.15.0-beta.299",
     "@xterm/headless": "^6.0.0",
     "bonjour-service": "^1.4.4",
     "commander": "^12.1.0",
