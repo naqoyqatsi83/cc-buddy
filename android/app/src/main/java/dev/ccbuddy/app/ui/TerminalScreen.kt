@@ -11,9 +11,11 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedTextField
@@ -138,32 +140,38 @@ fun TerminalScreen(
             Text(deviceName, modifier = Modifier.padding(top = 12.dp, end = 8.dp))
         }
 
-        TerminalWebView(
-            modifier = Modifier.fillMaxWidth().weight(1f)
-                .onSizeChanged { containerHeightCssPx = (it.height / density).toInt() },
-            onSwipePages = { pages ->
-                repeat(kotlin.math.abs(pages)) { sendScrollKey(down = pages > 0) }
-            },
-            onReady = { webView = it }
-        )
+        Row(modifier = Modifier.fillMaxWidth().weight(1f)) {
+            TerminalWebView(
+                modifier = Modifier.weight(1f).fillMaxHeight()
+                    .onSizeChanged { containerHeightCssPx = (it.height / density).toInt() },
+                onSwipePages = { pages ->
+                    repeat(kotlin.math.abs(pages)) { sendScrollKey(down = pages > 0) }
+                },
+                onReady = { webView = it }
+            )
+            // A narrow side column, not the bottom button row: keeping
+            // these off the bottom row leaves room there for Tab/Enter/
+            // quick-replies to all stay visible without needing a
+            // horizontal scroll to reach any of them.
+            Column(
+                modifier = Modifier.fillMaxHeight().width(56.dp),
+                verticalArrangement = Arrangement.Center
+            ) {
+                TextButton(
+                    onClick = { sendScrollKey(down = false) },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("▲") }
+                TextButton(
+                    onClick = { sendScrollKey(down = true) },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("▼") }
+            }
+        }
 
         Row(
             modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(8.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            // First, not last: these are the primary new control, and
-            // horizontal scroll to reach them (if this row overflows a
-            // narrow screen) shouldn't be required for the most-used
-            // buttons. Explicit taps, not just the swipe gesture above --
-            // swipe detection has repeatedly proven unreliable on real
-            // devices throughout this project (works in an emulator, does
-            // nothing on real hardware).
-            TextButton(onClick = { sendScrollKey(down = false) }) {
-                Text("▲ PgUp")
-            }
-            TextButton(onClick = { sendScrollKey(down = true) }) {
-                Text("▼ PgDn")
-            }
             QUICK_REPLIES.forEach { reply ->
                 TextButton(onClick = { send(reply) }) {
                     Text(reply.ifEmpty { "⏎" })
