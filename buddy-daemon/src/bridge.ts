@@ -1,5 +1,6 @@
 import { WebSocket } from "ws";
 import type { BuddySession } from "./session.js";
+import { consumeSuppressedReconnect, scheduleReconnect, suppressReconnect } from "./reconnect.js";
 
 const activeSockets = new Map<string, WebSocket>();
 
@@ -94,9 +95,18 @@ export function attachBridge(session: BuddySession, peerId: string, ws: WebSocke
     unsubscribeResize();
     unsubscribeTranscript();
     unsubscribeTail();
-    activeSockets.delete(peerId);
+    // Only drop the bridge for this exact socket -- if a reconnect already
+    // replaced it in activeSockets (a stale event firing after the new
+    // socket attached), don't tear down the live one.
+    if (activeSockets.get(peerId) === ws) activeSockets.delete(peerId);
     const peer = session.info.peers.find((p) => p.id === peerId);
     if (peer) peer.connected = false;
+    // A deliberate unpair already knows the peer is gone; anything else
+    // (network drop, phone app killed, Tailscale re-route) is worth
+    // retrying to get back to a durable connection.
+    if (!consumeSuppressedReconnect(peerId)) {
+      scheduleReconnect(session, peerId);
+    }
   };
   ws.on("close", cleanup);
   ws.on("error", cleanup);
@@ -105,6 +115,7 @@ export function attachBridge(session: BuddySession, peerId: string, ws: WebSocke
 export function closeBridge(peerId: string) {
   const ws = activeSockets.get(peerId);
   if (ws) {
+    suppressReconnect(peerId);
     ws.close();
     activeSockets.delete(peerId);
   }

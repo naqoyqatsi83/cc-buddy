@@ -4,6 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { addToken, removeToken } from "./tokenStore.js";
 import { attachBridge, closeBridge } from "./bridge.js";
+import { cancelReconnect } from "./reconnect.js";
 import type { PeerInfo } from "./types.js";
 import type { BuddySession } from "./session.js";
 
@@ -88,6 +89,7 @@ export async function unpairPeer(session: BuddySession, peerId: string): Promise
   if (idx === -1) return false;
   session.info.peers.splice(idx, 1);
   await removeToken(peerId);
+  cancelReconnect(peerId);
   closeBridge(peerId);
   return true;
 }

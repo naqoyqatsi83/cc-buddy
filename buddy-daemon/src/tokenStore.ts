@@ -67,3 +67,12 @@ export async function listTokensForSession(sessionId: string): Promise<TokenReco
   );
   return withTokens.filter((r): r is TokenRecord => r !== null);
 }
+
+/** Single-peer lookup for auto-reconnect (see reconnect.ts) -- doesn't need
+ * the rest of the session's peers, just this one's ip/port/token. */
+export async function getToken(peerId: string): Promise<TokenRecord | null> {
+  const meta = loadMetadata().find((r) => r.peerId === peerId);
+  if (!meta) return null;
+  const token = await keytar.getPassword(KEYCHAIN_SERVICE, peerId);
+  return token ? { ...meta, token } : null;
+}
