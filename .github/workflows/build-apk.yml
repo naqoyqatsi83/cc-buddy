@@ -36,7 +36,11 @@ jobs:
 
       - name: Decode release keystore
         working-directory: android
-        run: echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > release.keystore
+        # Written into app/ -- build.gradle.kts's signingConfigs.release
+        # resolves RELEASE_KEYSTORE_PATH via file(), which is relative to
+        # the app module's own projectDir (android/app), not the working
+        # directory these gradlew steps run from (android/).
+        run: echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > app/release.keystore
 
       - name: Build release APK
         working-directory: android
