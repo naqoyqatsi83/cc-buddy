@@ -16,12 +16,32 @@ android {
     val ciVersionName = (project.findProperty("releaseVersionName") as String?)
     val ciVersionCode = (project.findProperty("releaseVersionCode") as String?)?.toIntOrNull()
 
+    // CI provides these via env vars (see .github/workflows/build-apk.yml) so
+    // the public release APK is signed with a real, stable key instead of
+    // gradle's ephemeral debug key -- required for users to receive future
+    // updates as upgrades rather than "uninstall and reinstall". Absent
+    // locally, `release` builds fall back to unsigned (fine for local
+    // testing; only CI's tagged builds need to actually install on a phone
+    // as an update).
+    val releaseKeystorePath = System.getenv("RELEASE_KEYSTORE_PATH")
+
     defaultConfig {
         applicationId = "dev.ccbuddy.app"
         minSdk = 26
         targetSdk = 34
         versionCode = ciVersionCode ?: 1
         versionName = ciVersionName ?: "0.1.0"
+    }
+
+    signingConfigs {
+        if (releaseKeystorePath != null) {
+            create("release") {
+                storeFile = file(releaseKeystorePath)
+                storePassword = System.getenv("RELEASE_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("RELEASE_KEY_ALIAS")
+                keyPassword = System.getenv("RELEASE_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
@@ -33,6 +53,9 @@ android {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (releaseKeystorePath != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
