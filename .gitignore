@@ -14,3 +14,4 @@ captures/
 .cxx/
 *.keystore
 *.jks
+build-number.properties

@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -16,6 +18,30 @@ android {
     val ciVersionName = (project.findProperty("releaseVersionName") as String?)
     val ciVersionCode = (project.findProperty("releaseVersionCode") as String?)?.toIntOrNull()
 
+    // Local/dev builds have no CI-provided versionCode, so they always
+    // showed a hardcoded "build 1" in the app's own UI (AsciiLogo.kt)
+    // regardless of how many times the APK was actually rebuilt --
+    // useless for telling two local debug builds apart. This persists a
+    // counter (gitignored -- it's a local dev artifact, not meaningful
+    // across machines/checkouts, same reasoning as build/ or .gradle/)
+    // and bumps it once per Gradle invocation, so each local build gets
+    // a real, distinct, increasing number. Only used as the *fallback*;
+    // CI-tagged release builds still get their real versionCode from the
+    // workflow as before.
+    val localBuildNumberFile = file("build-number.properties")
+    val localBuildNumber = run {
+        val props = Properties()
+        if (localBuildNumberFile.exists()) {
+            localBuildNumberFile.inputStream().use { props.load(it) }
+        }
+        val next = (props.getProperty("buildNumber")?.toIntOrNull() ?: 0) + 1
+        props.setProperty("buildNumber", next.toString())
+        localBuildNumberFile.outputStream().use {
+            props.store(it, "Local debug build counter -- auto-incremented on every Gradle build, not meaningful for CI release builds")
+        }
+        next
+    }
+
     // CI provides these via env vars (see .github/workflows/build-apk.yml) so
     // the public release APK is signed with a real, stable key instead of
     // gradle's ephemeral debug key -- required for users to receive future
@@ -29,7 +55,7 @@ android {
         applicationId = "dev.ccbuddy.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = ciVersionCode ?: 1
+        versionCode = ciVersionCode ?: localBuildNumber
         versionName = ciVersionName ?: "0.3.0"
     }
 

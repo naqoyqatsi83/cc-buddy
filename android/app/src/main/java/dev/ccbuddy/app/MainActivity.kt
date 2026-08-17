@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -134,6 +135,16 @@ class MainActivity : ComponentActivity() {
                             terminalBridge = app.terminalBridge,
                             fontSizeOverride = fontSizeOverride,
                             compactMode = compactMode,
+                            readNotificationsAloud = readNotificationsAloud,
+                            onToggleReadNotificationsAloud = {
+                                val newValue = !readNotificationsAloud
+                                app.settingsStore.setReadNotificationsAloud(newValue)
+                                Toast.makeText(
+                                    this@MainActivity,
+                                    if (newValue) "Read aloud: On" else "Read aloud: Off",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            },
                             onBack = { viewingPeerId = null }
                         )
                     } else {

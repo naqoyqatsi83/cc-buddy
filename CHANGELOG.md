@@ -62,6 +62,24 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   display — Claude Code's TUI manages its own absolute-cursor-positioned
   redraws, and an out-of-band stdout write in the middle of one risks
   visibly corrupting the display for a cosmetic marker.
+- A speaker icon in the terminal screen's top bar toggles "read
+  notifications aloud" directly (same setting as the Settings screen
+  toggle), with a Toast confirming on/off — no trip to Settings needed
+  for the screen you're actually looking at when you'd want to flip it.
+- Compact mode is now actually compact. Tightening button content padding
+  alone barely changed anything — Material3 enforces a ~40dp minimum
+  touch-target height on buttons regardless of padding, which dominated
+  the rendered size. Now uses an explicit height override (which does win
+  over that internal minimum) across the quick-reply row, side scroll
+  buttons, top bar, and the reply text field (matched to the Send button
+  instead of towering over it, at a slightly taller floor than the other
+  buttons since text fields clip their own content below ~48dp).
+- Local (non-CI) debug builds now show a real, distinct, auto-incrementing
+  build number in the app's own UI instead of a hardcoded "build 1"
+  regardless of how many times the APK was actually rebuilt. A counter
+  file (gitignored — a local dev artifact, not meaningful across
+  machines) bumps once per Gradle invocation; CI-tagged release builds
+  are unaffected, still using their real versionCode from the workflow.
 
 ### Changed
 - The phone's WS server now runs on Ktor's Netty engine instead of CIO —

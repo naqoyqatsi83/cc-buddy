@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -31,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -78,6 +80,8 @@ fun TerminalScreen(
     onBack: () -> Unit,
     fontSizeOverride: Int? = null,
     compactMode: Boolean = false,
+    readNotificationsAloud: Boolean = false,
+    onToggleReadNotificationsAloud: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
@@ -182,12 +186,34 @@ fun TerminalScreen(
     }
 
     Column(modifier = modifier.fillMaxSize()) {
+        // Same defaultMinSize override as the bottom row (see
+        // bottomButtonModifier below) -- this bar was previously fixed
+        // size regardless of compactMode, plus a hand-tuned top-padding
+        // hack on deviceName to visually center it against the (also
+        // fixed-size) buttons. verticalAlignment = CenterVertically
+        // replaces that hack and keeps working regardless of button size.
+        val topRowPadding = if (compactMode) 2.dp else 8.dp
+        val topButtonModifier = if (compactMode) Modifier.height(32.dp) else Modifier
+        val topButtonPadding = if (compactMode) {
+            PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+        } else {
+            ButtonDefaults.TextButtonContentPadding
+        }
         Row(
-            modifier = Modifier.fillMaxWidth().padding(8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = topRowPadding),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            TextButton(onClick = onBack) { Text("< Sessions") }
-            Text(deviceName, modifier = Modifier.padding(top = 12.dp, end = 8.dp))
+            TextButton(onClick = onBack, modifier = topButtonModifier, contentPadding = topButtonPadding) {
+                Text("< Sessions")
+            }
+            Text(deviceName)
+            // Quick access to the same setting in SettingsScreen -- this is
+            // the screen you're actually looking at when you'd want to
+            // flip it, not worth a trip to Settings and back for.
+            TextButton(onClick = onToggleReadNotificationsAloud, modifier = topButtonModifier, contentPadding = topButtonPadding) {
+                Text(if (readNotificationsAloud) "🔊" else "🔇")
+            }
         }
 
         Row(modifier = Modifier.fillMaxWidth().weight(1f)) {
@@ -213,44 +239,77 @@ fun TerminalScreen(
             ) {
                 val sideButtonPadding = PaddingValues(
                     horizontal = 0.dp,
-                    vertical = if (compactMode) 5.dp else 8.dp
+                    vertical = if (compactMode) 2.dp else 8.dp
                 )
+                // Same defaultMinSize override as the bottom row -- see
+                // bottomButtonModifier below.
+                val sideButtonModifier = if (compactMode) {
+                    Modifier.fillMaxWidth().height(32.dp)
+                } else {
+                    Modifier.fillMaxWidth()
+                }
                 TextButton(
                     onClick = { sendScrollKey(down = false) },
                     contentPadding = sideButtonPadding,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = sideButtonModifier
                 ) { Text("▲") }
                 TextButton(
                     onClick = { sendScrollWheel(down = false) },
                     contentPadding = sideButtonPadding,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = sideButtonModifier
                 ) { Text("△") }
                 TextButton(
                     onClick = { sendScrollWheel(down = true) },
                     contentPadding = sideButtonPadding,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = sideButtonModifier
                 ) { Text("▽") }
                 TextButton(
                     onClick = { sendScrollKey(down = true) },
                     contentPadding = sideButtonPadding,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = sideButtonModifier
                 ) { Text("▼") }
             }
         }
 
-        // "Compact mode" shrinks this bottom cluster's button height by
-        // ~1/3 (per-button vertical content padding, the actual driver of
-        // a TextButton/Button's rendered height) so more of the terminal
-        // is visible -- default (disabled) keeps Material's normal sizing.
+        // "Compact mode" shrinks this bottom cluster so more of the
+        // terminal is visible. Tightening contentPadding alone barely
+        // changed anything -- Material3's Button/TextButton enforce a
+        // ~40dp minimum touch-target height internally
+        // (ButtonDefaults.MinHeight) regardless of padding, which
+        // dominates the rendered size. An explicit height modifier here
+        // is what actually overrides that minimum (the caller's modifier
+        // wraps the button's own internal defaultMinSize, so a tighter
+        // outer constraint wins); default (disabled) keeps Material's
+        // normal sizing and touch target untouched.
+        val bottomButtonModifier = if (compactMode) Modifier.height(32.dp) else Modifier
         val bottomButtonPadding = if (compactMode) {
-            PaddingValues(horizontal = 12.dp, vertical = 5.dp)
+            PaddingValues(horizontal = 8.dp, vertical = 2.dp)
         } else {
             ButtonDefaults.TextButtonContentPadding
         }
+        // Taller than the 32.dp quick-reply/side buttons -- comfortable
+        // single-line text entry needs a bit more room than a bare label
+        // button does -- but still well under the default ~56dp
+        // OutlinedTextField height. Applied to both the Send button and
+        // the text field next to it so they visually match instead of
+        // the field towering over an already-shrunk button. 40.dp clipped
+        // the field's own placeholder/input text -- unlike a plain
+        // Button, OutlinedTextField reserves internal space for its
+        // label/placeholder area even with none set, so it needs more
+        // headroom than a button's defaultMinSize before content fits
+        // without clipping; 48.dp (also Android's own standard minimum
+        // touch target size) is the safe floor.
+        val replyRowHeight = 48.dp
+        val sendButtonModifier = if (compactMode) Modifier.height(replyRowHeight) else Modifier
         val sendButtonPadding = if (compactMode) {
-            PaddingValues(horizontal = 16.dp, vertical = 5.dp)
+            PaddingValues(horizontal = 12.dp, vertical = 2.dp)
         } else {
             ButtonDefaults.ContentPadding
+        }
+        val replyFieldModifier = if (compactMode) {
+            Modifier.weight(1f).height(replyRowHeight)
+        } else {
+            Modifier.weight(1f)
         }
 
         Row(
@@ -258,33 +317,33 @@ fun TerminalScreen(
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             quickReplies.forEach { reply ->
-                TextButton(onClick = { send(reply) }, contentPadding = bottomButtonPadding) {
+                TextButton(onClick = { send(reply) }, modifier = bottomButtonModifier, contentPadding = bottomButtonPadding) {
                     Text(reply.ifEmpty { "⏎" })
                 }
             }
             // Tab must NOT submit like the replies above (no trailing
             // Enter) — it's how you accept an autocomplete suggestion,
             // which is a raw keystroke, not a complete answer.
-            TextButton(onClick = { sendRaw("\t") }, contentPadding = bottomButtonPadding) {
+            TextButton(onClick = { sendRaw("\t") }, modifier = bottomButtonModifier, contentPadding = bottomButtonPadding) {
                 Text("⇥")
             }
         }
 
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = if (compactMode) 2.dp else 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             OutlinedTextField(
                 value = replyText,
                 onValueChange = { replyText = it },
-                modifier = Modifier.weight(1f),
+                modifier = replyFieldModifier,
                 singleLine = true,
                 placeholder = { Text("Reply…") }
             )
             Button(onClick = {
                 send(replyText)
                 replyText = ""
-            }, contentPadding = sendButtonPadding) {
+            }, modifier = sendButtonModifier, contentPadding = sendButtonPadding) {
                 Text("Send")
             }
         }
