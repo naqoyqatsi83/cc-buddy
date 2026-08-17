@@ -11,7 +11,7 @@ Pair a Claude Code terminal session with your Android phone: live mirror, push n
 
 Claude Code keeps working on your machine. Your phone gets a live terminal, a nudge when it needs you, and a way to answer back — no cloud relay, no accounts, pairs directly over your LAN or Tailscale.
 
-[Quick Start](#quick-start) · [How it works](#how-it-works) · [Commands](#commands) · [Manage your installation](#manage-your-installation) · [Build from source](#build-from-source)
+[Security](#security) · [Quick Start](#quick-start) · [How it works](#how-it-works) · [Commands](#commands) · [Manage your installation](#manage-your-installation) · [Build from source](#build-from-source)
 
 </div>
 
@@ -24,12 +24,20 @@ Claude Code keeps working on your machine. Your phone gets a live terminal, a nu
 ## What You Get
 
 - Wrap any `claude` session with `buddy start` — it behaves exactly like `claude`, nothing changes about how you work.
-- Pair a phone by scanning the LAN (`/buddy-scan`) or typing an IP + 6-digit PIN (`/buddy-pair`), works over Wi-Fi or Tailscale.
+- Pair a phone by scanning the LAN (`/buddy-scan`) or typing an IP + 6-digit PIN (`/buddy-pair`), works over Wi-Fi or Tailscale. The connection is TLS-encrypted (`wss://`) end to end — see [Security](#security).
 - Live, byte-exact terminal mirror on the phone (real xterm.js, not a screenshot) — sized to match your actual PTY so TUI redraws (box-drawing, scroll regions, status lines) render correctly.
-- Push notification when Claude is waiting on you, cleared automatically once you're back.
-- Reply from the phone: quick-reply buttons, a text field, or raw keystrokes (Tab, Page Up/Down, scroll wheel, Ctrl+O expand/collapse) sent straight into the PTY.
-- Pair one phone with several PC sessions at once, switch between them from a single session list.
+- Push notification when Claude is waiting on you, cleared automatically once you're back. Optionally read the actual prompt (question + numbered options) aloud via text-to-speech — off by default, one tap to toggle from the terminal screen or Settings.
+- Reply from the phone: dynamic quick-reply buttons that reflect whatever's actually on screen (a 5-way menu shows five buttons, not a fixed 1/2), a text field, or raw keystrokes (Tab, Page Up/Down, scroll wheel, Ctrl+O expand/collapse) sent straight into the PTY.
+- Pair one phone with several PC sessions at once (and multiple phones with one session), switch between them from a single session list. A connection-quality indicator (round-trip latency, last-seen) is available in `/buddy-list` and, opt-in, on the phone's own list.
+- A battery-optimization exemption prompt and a `connectedDevice`-type foreground service keep the connection alive in the background instead of getting killed to save power.
 - Runs entirely on your LAN/Tailscale — the daemon only ever dials out to a phone IP you gave it; pairing tokens live in your OS keychain (`keytar` on the PC, `EncryptedSharedPreferences` on Android), not a plaintext file.
+
+## Security
+
+- **Transport**: the phone↔PC connection is `wss://` (TLS), not plaintext `ws://`. The phone generates a self-signed certificate on first run; the PC trusts it on first pairing (protected by the PIN + explicit accept-tap below) and pins its fingerprint for every reconnect after that — a cert that no longer matches is treated exactly like a rejected pairing token, not silently trusted.
+- **Pairing**: a 6-digit, single-use PIN with a 2-minute TTL, plus an explicit accept/deny tap on the phone — no pairing completes without both. Wrong-PIN attempts are rate-limited (5 within 60s locks that source out for 30s) so the PIN can't be brute-forced at LAN speed.
+- **Storage**: tokens live in your OS keychain (`keytar` on the PC, Android's `EncryptedSharedPreferences`) — never a plaintext file.
+- **Network**: the daemon's control API binds `127.0.0.1` only; it never listens on the LAN. The phone's WS server does listen on the LAN (that's how pairing/mirroring works at all), but only accepts a connection that completes the PIN or token handshake.
 
 ## Quick Start
 
@@ -104,7 +112,7 @@ The daemon spawns `claude` inside a real PTY sized to match your terminal, so an
 |---|---|
 | `/buddy-scan` | Browse the LAN for phones advertising `_buddycc._tcp` (mDNS) |
 | `/buddy-pair <ip> <pin>` | Pair with a phone by address and the PIN shown on its screen |
-| `/buddy-list` | List phones paired to this session, with online/offline status |
+| `/buddy-list` | List phones paired to this session, with online/offline status, round-trip latency, and last-seen for offline peers |
 | `/buddy-unpair [peer_id]` | Unpair a phone (prompts if more than one is paired) |
 
 ## Manage your installation
