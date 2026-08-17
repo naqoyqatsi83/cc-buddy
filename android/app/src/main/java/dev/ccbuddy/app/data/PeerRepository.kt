@@ -25,6 +25,12 @@ class PeerRepository(private val tokenStore: TokenStore) {
         }
     }
 
+    fun setLatency(id: String, latencyMs: Int) {
+        _peers.update { current ->
+            current.map { if (it.id == id) it.copy(latencyMs = latencyMs) else it }
+        }
+    }
+
     fun remove(id: String) {
         tokenStore.remove(id)
         _peers.update { current -> current.filterNot { it.id == id } }

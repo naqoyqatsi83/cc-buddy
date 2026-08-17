@@ -41,6 +41,7 @@ fun PairingScreen(
     localAddresses: List<LocalAddress>,
     peers: List<PeerSession>,
     pendingRequest: PendingPairRequest?,
+    showConnectionDetails: Boolean,
     batteryOptimizationExempt: Boolean,
     onRequestBatteryExemption: () -> Unit,
     onRegeneratePin: () -> Unit,
@@ -88,7 +89,7 @@ fun PairingScreen(
             Text("None yet. Run /buddy-pair <ip> <pin> from a buddy-daemon session.")
         } else {
             Column {
-                peers.forEach { peer -> PeerRow(peer, onUnpair, onOpenTerminal) }
+                peers.forEach { peer -> PeerRow(peer, showConnectionDetails, onUnpair, onOpenTerminal) }
             }
         }
     }
@@ -169,7 +170,12 @@ private fun BatteryExemptionCard(onRequestBatteryExemption: () -> Unit) {
 }
 
 @Composable
-private fun PeerRow(peer: PeerSession, onUnpair: (PeerSession) -> Unit, onOpenTerminal: (PeerSession) -> Unit) {
+private fun PeerRow(
+    peer: PeerSession,
+    showConnectionDetails: Boolean,
+    onUnpair: (PeerSession) -> Unit,
+    onOpenTerminal: (PeerSession) -> Unit
+) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -177,8 +183,14 @@ private fun PeerRow(peer: PeerSession, onUnpair: (PeerSession) -> Unit, onOpenTe
     ) {
         Column {
             Text(peer.deviceName, fontWeight = FontWeight.Medium)
+            val statusText = if (peer.connected) {
+                val latency = peer.latencyMs
+                if (showConnectionDetails && latency != null) "online · ${latency}ms" else "online"
+            } else {
+                "offline"
+            }
             Text(
-                if (peer.connected) "online" else "offline",
+                statusText,
                 style = MaterialTheme.typography.bodySmall,
                 color = if (peer.connected) MaterialTheme.colorScheme.primary
                 else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)

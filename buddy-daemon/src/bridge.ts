@@ -85,6 +85,17 @@ export function attachBridge(session: BuddySession, peerId: string, ws: WebSocke
     }
   });
 
+  // Round-trip latency for /buddy-list and (mirrored independently, not
+  // relayed) the phone's own connection-details display -- each side pings
+  // the other on its own timer and measures its own view of the round
+  // trip, so a one-way degradation shows up on whichever side it actually
+  // affects rather than needing the other side to report it.
+  const pingInterval = setInterval(() => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "ping", ts: Date.now() }));
+    }
+  }, 10_000);
+
   ws.on("message", (raw) => {
     let msg: any;
     try {
@@ -98,6 +109,16 @@ export function attachBridge(session: BuddySession, peerId: string, ws: WebSocke
       // A literal keystroke (e.g. Tab, for autocomplete) — must NOT get
       // an Enter appended, unlike a complete reply.
       session.pty.write(msg.data);
+    } else if (msg.type === "ping" && typeof msg.ts === "number") {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "pong", ts: msg.ts }));
+      }
+    } else if (msg.type === "pong" && typeof msg.ts === "number") {
+      const peer = session.info.peers.find((p) => p.id === peerId);
+      if (peer) {
+        peer.latencyMs = Date.now() - msg.ts;
+        peer.lastSeenAt = new Date().toISOString();
+      }
     }
   });
 
@@ -107,6 +128,7 @@ export function attachBridge(session: BuddySession, peerId: string, ws: WebSocke
     unsubscribeTranscript();
     unsubscribeTail();
     unsubscribeMenuOptions();
+    clearInterval(pingInterval);
     // Only drop the bridge for this exact socket -- if a reconnect already
     // replaced it in activeSockets (a stale event firing after the new
     // socket attached), don't tear down the live one.

@@ -19,6 +19,12 @@ class SettingsStore(context: Context) {
     private val _compactMode = MutableStateFlow(prefs.getBoolean(KEY_COMPACT, false))
     val compactMode: StateFlow<Boolean> = _compactMode
 
+    // Off by default -- latency is only useful when you're actually
+    // wondering why a session feels laggy; showing it unconditionally on
+    // every paired-session row would just be noise most of the time.
+    private val _showConnectionDetails = MutableStateFlow(prefs.getBoolean(KEY_CONNECTION_DETAILS, false))
+    val showConnectionDetails: StateFlow<Boolean> = _showConnectionDetails
+
     fun setFontSizeOverride(px: Int?) {
         prefs.edit().putInt(KEY_FONT_SIZE, px ?: 0).apply()
         _fontSizeOverride.value = px
@@ -29,9 +35,15 @@ class SettingsStore(context: Context) {
         _compactMode.value = enabled
     }
 
+    fun setShowConnectionDetails(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_CONNECTION_DETAILS, enabled).apply()
+        _showConnectionDetails.value = enabled
+    }
+
     companion object {
         private const val KEY_FONT_SIZE = "font_size_override"
         private const val KEY_COMPACT = "compact_mode"
+        private const val KEY_CONNECTION_DETAILS = "show_connection_details"
         const val MIN_FONT_SIZE = 8
         const val MAX_FONT_SIZE = 22
     }

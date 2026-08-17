@@ -24,6 +24,9 @@ import io.ktor.websocket.Frame
 import io.ktor.websocket.close
 import io.ktor.websocket.readText
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import java.security.SecureRandom
@@ -121,6 +124,15 @@ class BuddyWsServer(
                                     terminalBridge.setMenuOptions(it, msg.optJSONArray("options").toStringList())
                                 }
                             }
+                            "ping" -> {
+                                send(Frame.Text(JSONObject().put("type", "pong").put("ts", msg.optLong("ts")).toString()))
+                            }
+                            "pong" -> {
+                                pairedPeerId?.let {
+                                    val latencyMs = System.currentTimeMillis() - msg.optLong("ts")
+                                    peerRepository.setLatency(it, latencyMs.toInt())
+                                }
+                            }
                             "notification" -> {
                                 hookNotifier.onClaudeNotification(
                                     msg.optString("message", "Claude needs your attention")
@@ -210,6 +222,26 @@ class BuddyWsServer(
     private fun io.ktor.server.websocket.DefaultWebSocketServerSession.attachBridge(peerId: String) {
         terminalBridge.attach(peerId) { frameType, text ->
             send(Frame.Text(JSONObject().put("type", frameType).put("data", text).toString()))
+        }
+        // Round-trip latency for the phone's own connection-details display
+        // (see PeerRepository.setLatency) -- mirrors the daemon's own,
+        // independent ping timer (buddy-daemon/src/bridge.ts) rather than
+        // relaying a single measurement between the two. A child coroutine
+        // of this session, so it's cancelled automatically when the
+        // connection ends -- no manual cleanup needed, unlike the daemon's
+        // setInterval.
+        launch {
+            while (isActive) {
+                // send() throws once the connection is closing/closed, same
+                // as any other point in its normal lifecycle (see
+                // handlePairRequest's close() calls) -- catch and stop
+                // rather than let it propagate and cancel the session.
+                val sent = runCatching {
+                    send(Frame.Text(JSONObject().put("type", "ping").put("ts", System.currentTimeMillis()).toString()))
+                }
+                if (sent.isFailure) break
+                delay(10_000)
+            }
         }
     }
 

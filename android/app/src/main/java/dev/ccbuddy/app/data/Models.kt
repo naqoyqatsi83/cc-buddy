@@ -8,7 +8,11 @@ data class PeerSession(
     val deviceName: String,
     val token: String,
     val pairedAt: Long,
-    val connected: Boolean
+    val connected: Boolean,
+    // Round-trip time of the last ping/pong exchange, in ms -- live session
+    // data like [connected], not a durable pairing fact, so it's never
+    // persisted to TokenStore either.
+    val latencyMs: Int? = null
 )
 
 /**

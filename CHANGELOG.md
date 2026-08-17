@@ -26,6 +26,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   fixed 1/2. `y`/`n`/Tab/Enter stay as permanent baseline buttons
   regardless of what's detected; a plain 1/2 fallback covers prompts with
   no recognizable numbered menu.
+- A connection-quality indicator: the daemon and phone each independently
+  ping/pong every 10s over the existing paired connection and measure
+  their own round-trip latency (no relaying a single measurement between
+  devices). `/buddy-list` always shows it, plus last-seen for offline
+  peers; the phone's own paired-session list shows it too, gated behind a
+  new "Show connection details" Settings toggle (off by default).
 
 ### Changed
 - The phone's WS server now runs on Ktor's Netty engine instead of CIO —

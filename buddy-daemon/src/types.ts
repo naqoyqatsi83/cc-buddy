@@ -5,6 +5,10 @@ export interface PeerInfo {
   port: number;
   connected: boolean;
   pairedAt: string;
+  /** Round-trip time of the last ping/pong exchange, in ms. */
+  latencyMs?: number;
+  /** ISO timestamp of the last pong received from this peer. */
+  lastSeenAt?: string;
 }
 
 export interface SessionInfo {

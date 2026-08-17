@@ -61,6 +61,7 @@ class MainActivity : ComponentActivity() {
                     var showSettings by remember { mutableStateOf(false) }
                     val fontSizeOverride by app.settingsStore.fontSizeOverride.collectAsState()
                     val compactMode by app.settingsStore.compactMode.collectAsState()
+                    val showConnectionDetails by app.settingsStore.showConnectionDetails.collectAsState()
                     // Only the very first bridge of the app's lifetime auto-opens the
                     // terminal (first-pairing convenience). Without this, returning to
                     // the list to pair a second session and having it connect would
@@ -104,6 +105,7 @@ class MainActivity : ComponentActivity() {
                         SettingsScreen(
                             fontSizeOverride = fontSizeOverride,
                             compactMode = compactMode,
+                            showConnectionDetails = showConnectionDetails,
                             batteryOptimizationExempt = batteryOptimizationExempt,
                             onRequestBatteryExemption = {
                                 requestBatteryExemption.launch(ignoreBatteryOptimizationsIntent(this@MainActivity))
@@ -113,6 +115,7 @@ class MainActivity : ComponentActivity() {
                             },
                             onFontSizeOverrideChange = { app.settingsStore.setFontSizeOverride(it) },
                             onCompactModeChange = { app.settingsStore.setCompactMode(it) },
+                            onShowConnectionDetailsChange = { app.settingsStore.setShowConnectionDetails(it) },
                             onBack = { showSettings = false }
                         )
                     } else if (viewingPeerId != null && viewingPeer != null) {
@@ -136,6 +139,7 @@ class MainActivity : ComponentActivity() {
                             localAddresses = localAddresses,
                             peers = peers,
                             pendingRequest = pendingRequest,
+                            showConnectionDetails = showConnectionDetails,
                             batteryOptimizationExempt = batteryOptimizationExempt,
                             onRequestBatteryExemption = {
                                 requestBatteryExemption.launch(ignoreBatteryOptimizationsIntent(this@MainActivity))
