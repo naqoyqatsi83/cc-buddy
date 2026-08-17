@@ -167,6 +167,14 @@ Requires the Android SDK (platform 34, build-tools 34.0.0); `android/local.prope
 - `android/` — CC Buddy Android app (Kotlin + Jetpack Compose). Foreground service, embedded Ktor WebSocket server, PIN pairing handshake, paired-session list, and a live xterm.js terminal mirror with reply injection.
 - `scripts/` — `install.sh` / `install.ps1`: install, update, and uninstall the daemon + Claude Code plugin.
 
+## Credits
+
+CC Buddy wasn't ported from anywhere — there's no original codebase behind it. Every line in `buddy-daemon/`, `android/`, and `buddy-plugin/` was designed, written, built, and debugged by Claude Code across a long pairing session with its one human collaborator.
+
+🤖 No humans were harmed (or particularly involved) in the making of this app. The human's job was typing PINs, tapping Accept, occasionally saying "it froze" or "the text is cut off," and testing every feature live on a real phone before it shipped. Every fix, feature, and questionable design decision downstream of that was Claude's.
+
+⚠️ No human has reviewed this code line by line. It's been *tested* for real — TLS pairing, reconnects, multi-session, rate limiting, the works, all verified live rather than just claimed — but tested and audited are different things. Treat it accordingly: reasonable for pairing your own phone to your own PC, not yet reasonable to bet anything sensitive on. 🤘
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
