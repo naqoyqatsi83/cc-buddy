@@ -3,6 +3,19 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.1] - 2026-08-17
+
+### Fixed
+- The daemon's installed hook commands now use POSIX shell syntax
+  (`; exit 0`, `>/dev/null`) on every platform, including Windows. The
+  0.3.0 fix for silent hook failures (below) assumed Claude Code invokes
+  hook commands via `cmd.exe` on Windows and used `cmd` syntax
+  (`& exit /b 0`, `>nul`) there — but Claude Code actually runs hook
+  commands through Git Bash on Windows too, so `exit /b` failed with a
+  visible `numeric argument required` error on every hook fire, and the
+  `>nul` redirect (bash doesn't treat `nul` as a null device the way
+  `cmd` does) left a stray `nul` file in the working directory each time.
+
 ## [0.3.0] - 2026-08-17
 
 ### Added

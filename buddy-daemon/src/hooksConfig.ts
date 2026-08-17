@@ -58,12 +58,11 @@ export function installHooks(cwd: string, controlPort: number) {
  * silently discarding output and forcing exit 0 regardless of outcome --
  * a refused/timed-out connection (daemon not running) is then just a
  * no-op, never a visible error. `-m 2` bounds how long a hung connection
- * can hold up the hook. Windows' bundled curl.exe understands the same
- * flags; `&` (unconditional next-command) is cmd's equivalent of `;`. */
+ * can hold up the hook. Claude Code always invokes hook commands through
+ * bash, even on Windows (Git Bash), so this is POSIX syntax on every
+ * platform -- a cmd.exe-style `exit /b 0` fails under bash. */
 function curlCommand(url: string): string {
-  return process.platform === "win32"
-    ? `curl -s -m 2 -X POST --data-binary @- "${url}" >nul 2>&1 & exit /b 0`
-    : `curl -s -m 2 -X POST --data-binary @- "${url}" >/dev/null 2>&1; exit 0`;
+  return `curl -s -m 2 -X POST --data-binary @- "${url}" >/dev/null 2>&1; exit 0`;
 }
 
 /**
