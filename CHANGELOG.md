@@ -41,6 +41,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   session. 3: No."), extracted with the same viewport scan added for the
   dynamic quick-reply buttons above. Falls back to the generic message
   when nothing substantive is on screen to extract from.
+- Rate limiting on the pairing PIN handshake: 5 wrong PINs from the same
+  source within 60s locks that source out for 30s, during which further
+  attempts are denied immediately without even checking the submitted
+  PIN. The PIN itself (6 digits, single-use, 2-minute TTL) was the only
+  defense before this — brute-forcing that window at LAN speed with no
+  rate limiting was realistic. A successful pairing clears the source's
+  history, so a legitimate device that mistypes once isn't penalized.
 
 ### Changed
 - The phone's WS server now runs on Ktor's Netty engine instead of CIO —

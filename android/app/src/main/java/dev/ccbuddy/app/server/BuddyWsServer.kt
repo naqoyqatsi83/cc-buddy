@@ -3,6 +3,7 @@ package dev.ccbuddy.app.server
 import android.content.Context
 import dev.ccbuddy.app.WS_PORT
 import dev.ccbuddy.app.data.HookNotifier
+import dev.ccbuddy.app.data.PairingAttemptLimiter
 import dev.ccbuddy.app.data.PairingState
 import dev.ccbuddy.app.data.PeerRepository
 import dev.ccbuddy.app.data.PeerSession
@@ -52,6 +53,7 @@ class BuddyWsServer(
     private val phoneDeviceName: () -> String
 ) {
     private var engine: ApplicationEngine? = null
+    private val pairingAttemptLimiter = PairingAttemptLimiter()
 
     fun start() {
         if (engine != null) return
@@ -163,11 +165,18 @@ class BuddyWsServer(
         msg: JSONObject,
         remoteAddress: String
     ): String? {
+        if (pairingAttemptLimiter.isLocked(remoteAddress)) {
+            send(Frame.Text(JSONObject().put("type", "pair_denied").put("reason", "too many attempts, try again shortly").toString()))
+            close(CloseReason(CloseReason.Codes.NORMAL, "rate limited"))
+            return null
+        }
+
         val pin = msg.optString("pin")
         val deviceName = msg.optString("device_name", "Unknown PC")
         val activePin = pairingState.activePin.value
 
         if (activePin == null || activePin.isExpired() || activePin.pin != pin) {
+            pairingAttemptLimiter.recordFailure(remoteAddress)
             send(Frame.Text(JSONObject().put("type", "pair_denied").put("reason", "invalid or expired PIN").toString()))
             close(CloseReason(CloseReason.Codes.NORMAL, "denied"))
             return null
@@ -188,6 +197,7 @@ class BuddyWsServer(
 
         // PIN is single-use: clear it once it's been consumed by a successful pairing.
         pairingState.setPin(null)
+        pairingAttemptLimiter.recordSuccess(remoteAddress)
 
         val peerId = UUID.randomUUID().toString()
         val token = generateToken()
