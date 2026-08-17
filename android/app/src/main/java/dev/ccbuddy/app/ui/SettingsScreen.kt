@@ -24,6 +24,9 @@ import dev.ccbuddy.app.data.SettingsStore
 fun SettingsScreen(
     fontSizeOverride: Int?,
     compactMode: Boolean,
+    batteryOptimizationExempt: Boolean,
+    onRequestBatteryExemption: () -> Unit,
+    onOpenBatterySettings: () -> Unit,
     onFontSizeOverrideChange: (Int?) -> Unit,
     onCompactModeChange: (Boolean) -> Unit,
     onBack: () -> Unit,
@@ -79,6 +82,34 @@ fun SettingsScreen(
                 )
             }
             Switch(checked = compactMode, onCheckedChange = onCompactModeChange)
+        }
+
+        Spacer(Modifier.height(24.dp))
+        HorizontalDivider()
+        Spacer(Modifier.height(16.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Battery optimization", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    if (batteryOptimizationExempt) "Exempt — pairing stays stable in the background"
+                    else "Not exempt — Android may kill the connection to save power",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            // There's no direct "un-exempt" action to request (only Android
+            // itself can hand out the exemption) -- once granted, the best
+            // this can do is open this app's own system Settings page,
+            // where the user can find battery options and flip it back
+            // themselves.
+            TextButton(onClick = if (batteryOptimizationExempt) onOpenBatterySettings else onRequestBatteryExemption) {
+                Text(if (batteryOptimizationExempt) "App settings" else "Disable")
+            }
         }
     }
 }

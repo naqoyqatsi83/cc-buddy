@@ -13,10 +13,23 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   every reconnect afterward. A cert that no longer matches what was pinned
   is treated exactly like a rejected pairing token — the peer is dropped
   rather than silently trusted.
+- A battery-optimization exemption prompt: a banner on the main screen
+  (when not yet exempt) and a status row in Settings, both backed by the
+  same OS-level check. "App settings" opens the app's own system Settings
+  page directly rather than the generic battery-optimization list, which
+  defaults to hiding already-exempted apps and varies a lot across OEM
+  skins (Samsung's One UI among them).
 
 ### Changed
 - The phone's WS server now runs on Ktor's Netty engine instead of CIO —
   CIO has no server-side TLS support (`ktorio/ktor#886` is still open).
+- The foreground service's type is now `connectedDevice` instead of
+  `dataSync`. `dataSync` is meant for finite jobs (upload/backup/fetch),
+  and starting with Android 15 it's subject to a 6-hour cumulative
+  background runtime cap — wrong fit for a service meant to hold an
+  indefinite live connection open. `connectedDevice` (network/Bluetooth/
+  USB connection to an external device) is both the correct semantic fit
+  and has no such time limit.
 
 ### Breaking
 - Existing paired phones have no pinned certificate to verify against, so
@@ -25,12 +38,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   new builds can't talk to each other (`ws://` vs `wss://`).
 
 ### Fixed
-- The daemon now removes the Notification/Stop/PreToolUse hooks it installs
-  into `.claude/settings.local.json` when it shuts down (however that
-  happens — the wrapped `claude` exiting, Ctrl+C, or a kill). Previously
-  they were left pointing at that run's now-dead control port, so every
-  hook fired a visible `ECONNREFUSED` error until the next `buddy start`
-  overwrote them.
+- The daemon's installed Notification/Stop/PreToolUse hooks now fail
+  silently when it isn't running, instead of surfacing a visible
+  "ECONNREFUSED" error on every hook fire. They're `type: "command"`
+  (`curl ... ; exit 0`) rather than Claude Code's native `type: "http"`,
+  which has no way to suppress a connection error — this covers the
+  daemon exiting via a crash/reboot, not just a graceful stop.
 
 ## [0.2.0] - 2026-08-16
 

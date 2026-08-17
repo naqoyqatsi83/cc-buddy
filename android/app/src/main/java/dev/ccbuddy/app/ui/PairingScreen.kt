@@ -41,6 +41,8 @@ fun PairingScreen(
     localAddresses: List<LocalAddress>,
     peers: List<PeerSession>,
     pendingRequest: PendingPairRequest?,
+    batteryOptimizationExempt: Boolean,
+    onRequestBatteryExemption: () -> Unit,
     onRegeneratePin: () -> Unit,
     onUnpair: (PeerSession) -> Unit,
     onOpenTerminal: (PeerSession) -> Unit,
@@ -56,6 +58,11 @@ fun PairingScreen(
 
         PinCard(activePin, onRegeneratePin)
         Spacer(Modifier.height(16.dp))
+
+        if (!batteryOptimizationExempt) {
+            BatteryExemptionCard(onRequestBatteryExemption)
+            Spacer(Modifier.height(16.dp))
+        }
 
         Text("This device's addresses", style = MaterialTheme.typography.titleSmall)
         Spacer(Modifier.height(4.dp))
@@ -137,6 +144,25 @@ private fun PinCard(activePin: ActivePin?, onRegeneratePin: () -> Unit) {
             Spacer(Modifier.height(12.dp))
             Button(onClick = onRegeneratePin) {
                 Text("Regenerate PIN")
+            }
+        }
+    }
+}
+
+@Composable
+private fun BatteryExemptionCard(onRequestBatteryExemption: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Battery optimization is on", style = MaterialTheme.typography.titleSmall)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Android may kill the connection to save power while this app is in the " +
+                    "background. Exempt it to keep pairing stable.",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Spacer(Modifier.height(12.dp))
+            Button(onClick = onRequestBatteryExemption) {
+                Text("Disable battery optimization")
             }
         }
     }

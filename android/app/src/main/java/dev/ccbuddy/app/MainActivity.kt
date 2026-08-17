@@ -9,6 +9,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -16,17 +17,26 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import dev.ccbuddy.app.ui.PairingScreen
 import dev.ccbuddy.app.ui.SettingsScreen
 import dev.ccbuddy.app.ui.TerminalScreen
 import dev.ccbuddy.app.ui.theme.CCBuddyTheme
 import dev.ccbuddy.app.util.NetworkUtils
+import dev.ccbuddy.app.util.appDetailsSettingsIntent
+import dev.ccbuddy.app.util.ignoreBatteryOptimizationsIntent
+import dev.ccbuddy.app.util.isIgnoringBatteryOptimizations
 
 class MainActivity : ComponentActivity() {
 
     private val requestNotificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* no-op either way */ }
+
+    private val requestBatteryExemption =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { /* state refreshes on resume */ }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -59,6 +69,24 @@ class MainActivity : ComponentActivity() {
                     // backed out of — instead of just updating the list quietly.
                     var hasAutoOpened by remember { mutableStateOf(false) }
 
+                    var batteryOptimizationExempt by remember {
+                        mutableStateOf(isIgnoringBatteryOptimizations(this@MainActivity))
+                    }
+                    val lifecycleOwner = LocalLifecycleOwner.current
+                    DisposableEffect(lifecycleOwner) {
+                        // The system settings screen this launches doesn't
+                        // report a result Compose can react to directly --
+                        // re-read the OS-level flag whenever we come back
+                        // to the foreground instead.
+                        val observer = LifecycleEventObserver { _, event ->
+                            if (event == Lifecycle.Event.ON_RESUME) {
+                                batteryOptimizationExempt = isIgnoringBatteryOptimizations(this@MainActivity)
+                            }
+                        }
+                        lifecycleOwner.lifecycle.addObserver(observer)
+                        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+                    }
+
                     LaunchedEffect(activeBridgePeerIds) {
                         if (!hasAutoOpened && activeBridgePeerIds.isNotEmpty()) {
                             viewingPeerId = activeBridgePeerIds.first()
@@ -76,6 +104,13 @@ class MainActivity : ComponentActivity() {
                         SettingsScreen(
                             fontSizeOverride = fontSizeOverride,
                             compactMode = compactMode,
+                            batteryOptimizationExempt = batteryOptimizationExempt,
+                            onRequestBatteryExemption = {
+                                requestBatteryExemption.launch(ignoreBatteryOptimizationsIntent(this@MainActivity))
+                            },
+                            onOpenBatterySettings = {
+                                startActivity(appDetailsSettingsIntent(this@MainActivity))
+                            },
                             onFontSizeOverrideChange = { app.settingsStore.setFontSizeOverride(it) },
                             onCompactModeChange = { app.settingsStore.setCompactMode(it) },
                             onBack = { showSettings = false }
@@ -101,6 +136,10 @@ class MainActivity : ComponentActivity() {
                             localAddresses = localAddresses,
                             peers = peers,
                             pendingRequest = pendingRequest,
+                            batteryOptimizationExempt = batteryOptimizationExempt,
+                            onRequestBatteryExemption = {
+                                requestBatteryExemption.launch(ignoreBatteryOptimizationsIntent(this@MainActivity))
+                            },
                             onRegeneratePin = {
                                 regeneratePinDirectly()
                                 localAddresses = NetworkUtils.localAddresses()
