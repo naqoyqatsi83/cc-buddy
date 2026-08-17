@@ -46,6 +46,21 @@ function isPureRepeatOf(block: string[], line: string | null): boolean {
 // history quickly, regardless of how tall the real PC terminal is.
 const TAIL_MAX_LINES = 6;
 
+// Claude Code's permission/confirm prompts (and pickers like /model) render
+// as a numbered menu, e.g.
+//   Do you want to make this edit?
+//   ❯ 1. Yes
+//     2. Yes, and don't ask again this session
+//     3. No
+// -- sometimes with more options, and sometimes with a wrapped description
+// under each one (which is why this has to scan the whole current
+// viewport, not just the TAIL_MAX_LINES footer above -- a tall menu with
+// per-option descriptions easily exceeds 6 lines, and the top options
+// would otherwise never be seen). Matches each menu line (optional cursor
+// arrow, a number, then "." or ")") and collects the numbers actually
+// offered, in order.
+const MENU_OPTION_REGEX = /^\s*[❯>]?\s*(\d{1,2})[.)]\s+\S/;
+
 export class ShadowTerminal {
   private term: TerminalType;
   private serializeAddon: SerializeAddon;
@@ -59,6 +74,8 @@ export class ShadowTerminal {
   // most recent line and suppress a block that's entirely repeats of it.
   private lastAppendedLine: string | null = null;
   private lastTail: string[] = [];
+  private lastMenuOptions: string[] = [];
+  private rows: number;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private maxWaitTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -66,8 +83,10 @@ export class ShadowTerminal {
     cols: number,
     rows: number,
     private onHistoryAppend: (lines: string[]) => void,
-    private onTailUpdate: (lines: string[]) => void
+    private onTailUpdate: (lines: string[]) => void,
+    private onMenuOptions: (options: string[]) => void
   ) {
+    this.rows = rows;
     this.term = new Terminal({ cols, rows, scrollback: 100_000, allowProposedApi: true });
     this.serializeAddon = new SerializeAddon();
     this.term.loadAddon(this.serializeAddon);
@@ -75,6 +94,7 @@ export class ShadowTerminal {
 
   resize(cols: number, rows: number) {
     this.term.resize(cols, rows);
+    this.rows = rows;
   }
 
   /**
@@ -158,6 +178,23 @@ export class ShadowTerminal {
     if (!sameLines(tail, this.lastTail)) {
       this.onTailUpdate(tail);
       this.lastTail = tail;
+    }
+
+    // The current viewport -- what's actually visible on the real PC
+    // screen right now, same as what the phone's own raw-byte mirror
+    // shows -- not the (much narrower) tail footer above, which is sized
+    // for the phone's fixed-footer UI, not for catching a tall menu.
+    const viewportStart = Math.max(0, effectiveTotal - this.rows);
+    const menuOptions: string[] = [];
+    for (let i = viewportStart; i < effectiveTotal; i++) {
+      const line = buf.getLine(i);
+      const text = line ? line.translateToString(true) : "";
+      const match = MENU_OPTION_REGEX.exec(text);
+      if (match && !menuOptions.includes(match[1])) menuOptions.push(match[1]);
+    }
+    if (!sameLines(menuOptions, this.lastMenuOptions)) {
+      this.onMenuOptions(menuOptions);
+      this.lastMenuOptions = menuOptions;
     }
   }
 }

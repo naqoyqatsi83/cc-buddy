@@ -116,6 +116,11 @@ class BuddyWsServer(
                                     terminalBridge.setTail(it, msg.optJSONArray("lines").toStringList())
                                 }
                             }
+                            "menu_options" -> {
+                                pairedPeerId?.let {
+                                    terminalBridge.setMenuOptions(it, msg.optJSONArray("options").toStringList())
+                                }
+                            }
                             "notification" -> {
                                 hookNotifier.onClaudeNotification(
                                     msg.optString("message", "Claude needs your attention")

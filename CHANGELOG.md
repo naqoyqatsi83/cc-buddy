@@ -19,6 +19,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   page directly rather than the generic battery-optimization list, which
   defaults to hiding already-exempted apps and varies a lot across OEM
   skins (Samsung's One UI among them).
+- Dynamic quick-reply buttons: the daemon scans the PC's current on-screen
+  viewport for a numbered menu (Claude Code's confirm/permission prompts,
+  model picker, etc.) and sends the phone exactly the option numbers
+  actually offered — a 5-way menu shows five buttons, not just the old
+  fixed 1/2. `y`/`n`/Tab/Enter stay as permanent baseline buttons
+  regardless of what's detected; a plain 1/2 fallback covers prompts with
+  no recognizable numbered menu.
 
 ### Changed
 - The phone's WS server now runs on Ktor's Netty engine instead of CIO —

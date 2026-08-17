@@ -31,6 +31,12 @@ export interface BuddySession {
   tail: string[];
   /** Fires whenever the tail changes (wholesale replace, not append). */
   onTailUpdate: (listener: (lines: string[]) => void) => () => void;
+  /** Numbered-menu options detected in the current PC-screen viewport
+   * (see ShadowTerminal) — e.g. ["1","2","3"] for a 3-way confirm prompt,
+   * empty if nothing recognizable is on screen right now. */
+  menuOptions: string[];
+  /** Fires whenever the detected menu options change (wholesale replace). */
+  onMenuOptionsUpdate: (listener: (options: string[]) => void) => () => void;
   /** ANSI reconstruction of the PTY's current active screen (see
    * ShadowTerminal.getSnapshotAnsi) -- sent to a newly-attaching phone
    * before live deltas so it starts fully painted instead of blank. */
@@ -78,6 +84,8 @@ export function startSession(opts: StartSessionOptions): BuddySession {
   const transcript: string[] = [];
   const tailListeners = new Set<(lines: string[]) => void>();
   let tail: string[] = [];
+  const menuOptionsListeners = new Set<(options: string[]) => void>();
+  let menuOptions: string[] = [];
 
   const ptyProcess = pty.spawn(shellForPlatform(), opts.claudeArgs, {
     name: "xterm-256color",
@@ -111,6 +119,10 @@ export function startSession(opts: StartSessionOptions): BuddySession {
     (lines) => {
       tail = lines;
       for (const listener of tailListeners) listener(lines);
+    },
+    (options) => {
+      menuOptions = options;
+      for (const listener of menuOptionsListeners) listener(options);
     }
   );
 
@@ -175,6 +187,13 @@ export function startSession(opts: StartSessionOptions): BuddySession {
     onTailUpdate: (listener) => {
       tailListeners.add(listener);
       return () => tailListeners.delete(listener);
+    },
+    get menuOptions() {
+      return menuOptions;
+    },
+    onMenuOptionsUpdate: (listener) => {
+      menuOptionsListeners.add(listener);
+      return () => menuOptionsListeners.delete(listener);
     },
     getSnapshot: () => shadow.getSnapshotAnsi(),
   };

@@ -39,7 +39,11 @@ import androidx.compose.ui.viewinterop.AndroidView
 import dev.ccbuddy.app.data.TerminalBridge
 import kotlinx.coroutines.launch
 
-private val QUICK_REPLIES = listOf("1", "2", "y", "n", "")
+// Fallback when the daemon hasn't detected a numbered menu in the current
+// prompt (see buddy-daemon/src/shadowTerminal.ts) -- matches Claude Code's
+// most common case (a plain yes/no confirm) so the buttons are still
+// useful by default.
+private val DEFAULT_NUMBER_REPLIES = listOf("1", "2")
 
 /**
  * One full-screen view: the exact 1:1 raw-byte PC mirror. The
@@ -84,6 +88,14 @@ fun TerminalScreen(
     var rows by remember { mutableStateOf(30) }
     val density = LocalDensity.current.density
     var containerHeightCssPx by remember { mutableStateOf(0) }
+    var menuOptions by remember { mutableStateOf<List<String>>(emptyList()) }
+
+    LaunchedEffect(peerId) {
+        val flow = terminalBridge.menuOptionsFlow(peerId) ?: return@LaunchedEffect
+        flow.collect { menuOptions = it }
+    }
+    val numberReplies = remember(menuOptions) { menuOptions.ifEmpty { DEFAULT_NUMBER_REPLIES } }
+    val quickReplies = remember(numberReplies) { numberReplies + listOf("y", "n", "") }
 
     LaunchedEffect(webView, containerHeightCssPx) {
         if (containerHeightCssPx > 0) {
@@ -245,7 +257,7 @@ fun TerminalScreen(
             modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(8.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            QUICK_REPLIES.forEach { reply ->
+            quickReplies.forEach { reply ->
                 TextButton(onClick = { send(reply) }, contentPadding = bottomButtonPadding) {
                     Text(reply.ifEmpty { "⏎" })
                 }

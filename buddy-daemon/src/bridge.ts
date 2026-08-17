@@ -68,6 +68,17 @@ export function attachBridge(session: BuddySession, peerId: string, ws: WebSocke
     }
   });
 
+  // Numbered-menu options detected in the current PC-screen viewport (see
+  // ShadowTerminal) -- drives the phone's dynamic quick-reply buttons.
+  if (ws.readyState === WebSocket.OPEN && session.menuOptions.length > 0) {
+    ws.send(JSON.stringify({ type: "menu_options", options: session.menuOptions }));
+  }
+  const unsubscribeMenuOptions = session.onMenuOptionsUpdate((options) => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "menu_options", options }));
+    }
+  });
+
   const unsubscribe = session.onData((chunk) => {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: "pty_data", data: chunk }));
@@ -95,6 +106,7 @@ export function attachBridge(session: BuddySession, peerId: string, ws: WebSocke
     unsubscribeResize();
     unsubscribeTranscript();
     unsubscribeTail();
+    unsubscribeMenuOptions();
     // Only drop the bridge for this exact socket -- if a reconnect already
     // replaced it in activeSockets (a stale event firing after the new
     // socket attached), don't tear down the live one.

@@ -40,6 +40,11 @@ class TerminalBridge {
         // in place daemon-side, so this is a fixed footer that gets
         // replaced wholesale, not appended to the scrollable transcript.
         val tail: MutableStateFlow<List<String>> = MutableStateFlow(emptyList()),
+        // Numbered-menu options detected daemon-side in the current PC-
+        // screen viewport (see buddy-daemon/src/shadowTerminal.ts) — e.g.
+        // ["1","2","3"] for a 3-way confirm prompt. Drives the terminal
+        // screen's dynamic quick-reply buttons.
+        val menuOptions: MutableStateFlow<List<String>> = MutableStateFlow(emptyList()),
         // (frameType, data) -> Unit. frameType is "input" (complete reply,
         // daemon appends Enter) or "raw_input" (literal keystroke, e.g.
         // Tab — must NOT get an Enter appended).
@@ -104,6 +109,15 @@ class TerminalBridge {
 
     /** Null if this peer has no live connection right now. */
     fun tailFlow(peerId: String): StateFlow<List<String>>? = bridges[peerId]?.tail
+
+    /** Replaces the whole set of detected menu options — used for both the initial send and every update. */
+    @Synchronized
+    fun setMenuOptions(peerId: String, options: List<String>) {
+        bridges[peerId]?.menuOptions?.value = options
+    }
+
+    /** Null if this peer has no live connection right now. */
+    fun menuOptionsFlow(peerId: String): StateFlow<List<String>>? = bridges[peerId]?.menuOptions
 
     /** A complete reply — the daemon appends Enter (e.g. quick-reply buttons, the text field's Send). */
     suspend fun sendInput(peerId: String, text: String) {
