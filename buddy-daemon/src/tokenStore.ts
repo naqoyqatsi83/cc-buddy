@@ -21,6 +21,10 @@ interface PeerRecord {
   ip: string;
   port: number;
   pairedAt: string;
+  // Absent on records written before TLS pinning was added -- reconnect.ts
+  // treats a missing fingerprint as a mismatch, forcing a manual re-pair
+  // rather than silently trusting whatever cert the phone presents.
+  certFingerprint?: string;
 }
 
 export interface TokenRecord extends PeerRecord {

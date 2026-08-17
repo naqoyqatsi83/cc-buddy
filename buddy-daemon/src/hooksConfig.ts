@@ -64,3 +64,41 @@ function samePath(url: string, path: string): boolean {
     return false;
   }
 }
+
+const INSTALLED_HOOK_PATHS = ["/hook/notification", "/hook/stop", "/hook/pretooluse"];
+
+/**
+ * Removes the hook entries installHooks() wrote, called when the daemon
+ * shuts down -- otherwise they keep pointing at this run's now-dead
+ * control port, and every Notification/Stop/PreToolUse event fails with a
+ * visible "ECONNREFUSED" until the next `buddy start` overwrites them.
+ * Matches by URL path only (ignoring host/port, which change every run),
+ * same as upsertHook, so it only ever touches entries this daemon itself
+ * installed -- hooks the user configured for other events are untouched.
+ */
+export function uninstallHooks(cwd: string) {
+  const settingsPath = join(join(cwd, ".claude"), "settings.local.json");
+  if (!existsSync(settingsPath)) return;
+
+  let settings: any;
+  try {
+    settings = JSON.parse(readFileSync(settingsPath, "utf8"));
+  } catch {
+    return;
+  }
+  if (!settings.hooks) return;
+
+  for (const event of Object.keys(settings.hooks)) {
+    const kept = (settings.hooks[event] as HookMatcherEntry[]).filter(
+      (entry) => !entry.hooks?.some((h) => h.url && INSTALLED_HOOK_PATHS.some((p) => samePath(h.url, p)))
+    );
+    if (kept.length > 0) {
+      settings.hooks[event] = kept;
+    } else {
+      delete settings.hooks[event];
+    }
+  }
+  if (Object.keys(settings.hooks).length === 0) delete settings.hooks;
+
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+}

@@ -1,10 +1,11 @@
-import { WebSocket } from "ws";
+import type { WebSocket } from "ws";
 import { randomUUID } from "node:crypto";
 import * as os from "node:os";
 import * as path from "node:path";
 import { addToken, removeToken } from "./tokenStore.js";
 import { attachBridge, closeBridge } from "./bridge.js";
 import { cancelReconnect } from "./reconnect.js";
+import { openSecureWs } from "./tls.js";
 import type { PeerInfo } from "./types.js";
 import type { BuddySession } from "./session.js";
 
@@ -24,7 +25,14 @@ export function pairWithPhone(
   pin: string
 ): Promise<PeerInfo> {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(`ws://${ip}:${port}`);
+    // First pairing has nothing to pin against yet -- TOFU: accept
+    // whatever cert the phone presents, and capture its fingerprint so it
+    // can be pinned for all future reconnects once pairing succeeds.
+    let certFingerprint: string | undefined;
+    const ws = openSecureWs(ip, port, (fp) => {
+      certFingerprint = fp;
+      return true;
+    });
     const timer = setTimeout(() => {
       ws.terminate();
       reject(new Error("Pairing timed out waiting for phone response"));
@@ -66,6 +74,7 @@ export function pairWithPhone(
           port,
           token: msg.token,
           pairedAt: peer.pairedAt,
+          certFingerprint,
         }).catch((err) => console.error("failed to save pairing token", err));
         session.info.peers.push(peer);
         attachBridge(session, peer.id, ws);

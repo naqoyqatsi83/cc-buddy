@@ -1,5 +1,6 @@
 package dev.ccbuddy.app.server
 
+import android.content.Context
 import dev.ccbuddy.app.WS_PORT
 import dev.ccbuddy.app.data.HookNotifier
 import dev.ccbuddy.app.data.PairingState
@@ -9,9 +10,11 @@ import dev.ccbuddy.app.data.PendingPairRequest
 import dev.ccbuddy.app.data.TerminalBridge
 import io.ktor.server.application.Application
 import io.ktor.server.application.install
-import io.ktor.server.cio.CIO
 import io.ktor.server.engine.ApplicationEngine
+import io.ktor.server.engine.applicationEngineEnvironment
 import io.ktor.server.engine.embeddedServer
+import io.ktor.server.engine.sslConnector
+import io.ktor.server.netty.Netty
 import io.ktor.server.plugins.origin
 import io.ktor.server.routing.routing
 import io.ktor.server.websocket.WebSockets
@@ -38,6 +41,7 @@ private fun JSONArray?.toStringList(): List<String> =
  * out as `input` frames.
  */
 class BuddyWsServer(
+    private val context: Context,
     private val pairingState: PairingState,
     private val peerRepository: PeerRepository,
     private val terminalBridge: TerminalBridge,
@@ -48,9 +52,20 @@ class BuddyWsServer(
 
     fun start() {
         if (engine != null) return
-        engine = embeddedServer(CIO, port = WS_PORT, host = "0.0.0.0") {
-            module()
-        }.start(wait = false)
+        val identity = TlsIdentity.loadOrCreate(context)
+        val environment = applicationEngineEnvironment {
+            sslConnector(
+                keyStore = identity.keyStore,
+                keyAlias = identity.alias,
+                keyStorePassword = { identity.password },
+                privateKeyPassword = { identity.password }
+            ) {
+                port = WS_PORT
+                host = "0.0.0.0"
+            }
+            module { module() }
+        }
+        engine = embeddedServer(Netty, environment).start(wait = false)
     }
 
     fun stop() {

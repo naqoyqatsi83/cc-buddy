@@ -1,6 +1,6 @@
-import { WebSocket } from "ws";
 import { attachBridge } from "./bridge.js";
 import { getToken, removeToken } from "./tokenStore.js";
+import { openSecureWs } from "./tls.js";
 import type { BuddySession } from "./session.js";
 
 // A brief network blip (mobile network handoff, Tailscale re-routing around
@@ -56,8 +56,30 @@ async function attemptReconnect(session: BuddySession, peerId: string, attempt: 
   const record = await getToken(peerId);
   if (!record) return; // token gone (unpaired) -- nothing to reconnect with
 
-  const ws = new WebSocket(`ws://${record.ip}:${record.port}`);
   let settled = false;
+
+  // The phone no longer recognizes this token, or its cert no longer
+  // matches what was pinned at pairing time -- either way retrying won't
+  // ever succeed, so drop the peer instead of backing off forever.
+  const dropPeer = () => {
+    settled = true;
+    clearTimeout(timeout);
+    ws.terminate();
+    removeToken(peerId).catch((err) => console.error("failed to remove stale token", err));
+    const idx = session.info.peers.findIndex((p) => p.id === peerId);
+    if (idx !== -1) session.info.peers.splice(idx, 1);
+  };
+
+  // Verify the phone's cert still matches what was pinned at pairing time
+  // -- a missing (pre-TLS peer) or mismatched fingerprint is treated the
+  // same as a rejected token.
+  const ws = openSecureWs(record.ip, record.port, (fp) => {
+    if (record.certFingerprint !== fp) {
+      dropPeer();
+      return false;
+    }
+    return true;
+  });
 
   const retry = () => {
     if (settled) return;
@@ -90,15 +112,7 @@ async function attemptReconnect(session: BuddySession, peerId: string, attempt: 
       peer.connected = true;
       attachBridge(session, peerId, ws);
     } else if (msg.type === "reconnect_denied") {
-      // The phone no longer recognizes this token (unpaired from the phone
-      // side, or its app data was cleared) -- retrying won't ever succeed,
-      // so drop the peer instead of backing off forever.
-      settled = true;
-      clearTimeout(timeout);
-      ws.close();
-      removeToken(peerId).catch((err) => console.error("failed to remove stale token", err));
-      const idx = session.info.peers.findIndex((p) => p.id === peerId);
-      if (idx !== -1) session.info.peers.splice(idx, 1);
+      dropPeer();
     }
   });
 

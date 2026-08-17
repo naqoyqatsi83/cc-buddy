@@ -35,6 +35,7 @@ class BuddyForegroundService : Service(), HookNotifier {
         super.onCreate()
         val app = application as BuddyApp
         wsServer = BuddyWsServer(
+            context = applicationContext,
             pairingState = app.pairingState,
             peerRepository = app.peerRepository,
             terminalBridge = app.terminalBridge,

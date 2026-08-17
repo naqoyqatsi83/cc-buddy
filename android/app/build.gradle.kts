@@ -30,7 +30,7 @@ android {
         minSdk = 26
         targetSdk = 34
         versionCode = ciVersionCode ?: 1
-        versionName = ciVersionName ?: "0.2.0"
+        versionName = ciVersionName ?: "0.3.0"
     }
 
     signingConfigs {
@@ -78,6 +78,18 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            // Netty and BouncyCastle each ship several jars ("netty-*",
+            // "bc{prov,util,pkix}-jdk18on") that duplicate the same
+            // MET-INF housekeeping files (index/version metadata, license
+            // text, OSGi manifests) -- Android's resource merger treats
+            // any duplicate as an error, so drop these non-code files
+            // broadly rather than excluding them one at a time.
+            excludes += "/META-INF/INDEX.LIST"
+            excludes += "/META-INF/io.netty.versions.properties"
+            excludes += "/META-INF/versions/9/OSGI-INF/**"
+            excludes += "/META-INF/LICENSE*"
+            excludes += "/META-INF/NOTICE*"
+            excludes += "/META-INF/DEPENDENCIES"
         }
     }
 }
@@ -99,8 +111,16 @@ dependencies {
 
     val ktorVersion = "2.3.12"
     implementation("io.ktor:ktor-server-core:$ktorVersion")
-    implementation("io.ktor:ktor-server-cio:$ktorVersion")
+    // Netty, not CIO: CIO's server engine has no SSL/TLS support
+    // (ktorio/ktor#886 is still open), and the WS server needs to speak
+    // wss:// to the daemon.
+    implementation("io.ktor:ktor-server-netty:$ktorVersion")
     implementation("io.ktor:ktor-server-websockets:$ktorVersion")
+
+    // For generating the phone's self-signed TLS identity -- the JVM's own
+    // X.509 cert-builder APIs are internal sun.security.x509 classes,
+    // unreliable/restricted on Android.
+    implementation("org.bouncycastle:bcpkix-jdk18on:1.85")
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
