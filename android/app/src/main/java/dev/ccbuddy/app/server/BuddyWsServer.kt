@@ -135,7 +135,8 @@ class BuddyWsServer(
                             }
                             "notification" -> {
                                 hookNotifier.onClaudeNotification(
-                                    msg.optString("message", "Claude needs your attention")
+                                    msg.optString("message", "Claude needs your attention"),
+                                    msg.optString("question", "").ifBlank { null }
                                 )
                             }
                             "stop" -> hookNotifier.onClaudeStop()

@@ -25,12 +25,14 @@ fun SettingsScreen(
     fontSizeOverride: Int?,
     compactMode: Boolean,
     showConnectionDetails: Boolean,
+    readNotificationsAloud: Boolean,
     batteryOptimizationExempt: Boolean,
     onRequestBatteryExemption: () -> Unit,
     onOpenBatterySettings: () -> Unit,
     onFontSizeOverrideChange: (Int?) -> Unit,
     onCompactModeChange: (Boolean) -> Unit,
     onShowConnectionDetailsChange: (Boolean) -> Unit,
+    onReadNotificationsAloudChange: (Boolean) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -101,6 +103,23 @@ fun SettingsScreen(
                 )
             }
             Switch(checked = showConnectionDetails, onCheckedChange = onShowConnectionDetailsChange)
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Read notifications aloud", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    "Speaks the prompt text when Claude needs your attention",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            Switch(checked = readNotificationsAloud, onCheckedChange = onReadNotificationsAloudChange)
         }
 
         Spacer(Modifier.height(24.dp))

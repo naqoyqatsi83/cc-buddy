@@ -7,7 +7,11 @@ package dev.ccbuddy.app.data
  * Context to actually post Android notifications.
  */
 interface HookNotifier {
-    fun onClaudeNotification(message: String)
+    // question is the daemon's best-effort extracted prompt text (see
+    // buddy-daemon/src/shadowTerminal.ts) -- richer than message, but not
+    // always present (null when nothing substantive was on screen to
+    // extract it from), in which case message is the fallback.
+    fun onClaudeNotification(message: String, question: String?)
     fun onClaudeStop()
     fun onPreToolUse(tool: String, input: String?)
 }

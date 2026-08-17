@@ -62,6 +62,7 @@ class MainActivity : ComponentActivity() {
                     val fontSizeOverride by app.settingsStore.fontSizeOverride.collectAsState()
                     val compactMode by app.settingsStore.compactMode.collectAsState()
                     val showConnectionDetails by app.settingsStore.showConnectionDetails.collectAsState()
+                    val readNotificationsAloud by app.settingsStore.readNotificationsAloud.collectAsState()
                     // Only the very first bridge of the app's lifetime auto-opens the
                     // terminal (first-pairing convenience). Without this, returning to
                     // the list to pair a second session and having it connect would
@@ -106,6 +107,7 @@ class MainActivity : ComponentActivity() {
                             fontSizeOverride = fontSizeOverride,
                             compactMode = compactMode,
                             showConnectionDetails = showConnectionDetails,
+                            readNotificationsAloud = readNotificationsAloud,
                             batteryOptimizationExempt = batteryOptimizationExempt,
                             onRequestBatteryExemption = {
                                 requestBatteryExemption.launch(ignoreBatteryOptimizationsIntent(this@MainActivity))
@@ -116,6 +118,7 @@ class MainActivity : ComponentActivity() {
                             onFontSizeOverrideChange = { app.settingsStore.setFontSizeOverride(it) },
                             onCompactModeChange = { app.settingsStore.setCompactMode(it) },
                             onShowConnectionDetailsChange = { app.settingsStore.setShowConnectionDetails(it) },
+                            onReadNotificationsAloudChange = { app.settingsStore.setReadNotificationsAloud(it) },
                             onBack = { showSettings = false }
                         )
                     } else if (viewingPeerId != null && viewingPeer != null) {

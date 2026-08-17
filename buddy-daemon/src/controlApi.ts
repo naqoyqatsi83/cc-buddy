@@ -72,6 +72,11 @@ export function startControlApi(port: number, sessionRef: SessionRef): Promise<S
       broadcastToPeers(session, {
         type: "notification",
         message: req.body?.message ?? "Claude needs your attention",
+        // Best-effort extracted prompt text + options (see ShadowTerminal),
+        // read at this exact moment -- undefined if nothing substantive is
+        // on screen to anchor it to, in which case the phone falls back to
+        // the generic message above.
+        question: session.spokenPrompt,
       });
     }
     res.json({ ok: true });

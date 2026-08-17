@@ -25,6 +25,12 @@ class SettingsStore(context: Context) {
     private val _showConnectionDetails = MutableStateFlow(prefs.getBoolean(KEY_CONNECTION_DETAILS, false))
     val showConnectionDetails: StateFlow<Boolean> = _showConnectionDetails
 
+    // Off by default -- speaking every notification aloud is the kind of
+    // thing you want deliberately, not sprung on you the first time
+    // Claude needs attention while the phone's in your pocket in public.
+    private val _readNotificationsAloud = MutableStateFlow(prefs.getBoolean(KEY_READ_ALOUD, false))
+    val readNotificationsAloud: StateFlow<Boolean> = _readNotificationsAloud
+
     fun setFontSizeOverride(px: Int?) {
         prefs.edit().putInt(KEY_FONT_SIZE, px ?: 0).apply()
         _fontSizeOverride.value = px
@@ -40,10 +46,16 @@ class SettingsStore(context: Context) {
         _showConnectionDetails.value = enabled
     }
 
+    fun setReadNotificationsAloud(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_READ_ALOUD, enabled).apply()
+        _readNotificationsAloud.value = enabled
+    }
+
     companion object {
         private const val KEY_FONT_SIZE = "font_size_override"
         private const val KEY_COMPACT = "compact_mode"
         private const val KEY_CONNECTION_DETAILS = "show_connection_details"
+        private const val KEY_READ_ALOUD = "read_notifications_aloud"
         const val MIN_FONT_SIZE = 8
         const val MAX_FONT_SIZE = 22
     }

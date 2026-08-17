@@ -59,7 +59,13 @@ const TAIL_MAX_LINES = 6;
 // would otherwise never be seen). Matches each menu line (optional cursor
 // arrow, a number, then "." or ")") and collects the numbers actually
 // offered, in order.
-const MENU_OPTION_REGEX = /^\s*[❯>]?\s*(\d{1,2})[.)]\s+\S/;
+const MENU_OPTION_REGEX = /^\s*[❯>]?\s*(\d{1,2})[.)]\s+(\S.*)$/;
+
+// A line that's blank, or made up entirely of box-drawing/border
+// characters (Ink/TUI framing around a prompt box) -- skipped when
+// walking backward from a menu option to find the actual question text
+// above it, so the question doesn't end up being a border line instead.
+const BORDER_OR_BLANK_REGEX = /^[\s─│┌┐└┘├┤┬┴┼╭╮╰╯▐▌═║╔╗╚╝]*$/;
 
 export class ShadowTerminal {
   private term: TerminalType;
@@ -75,6 +81,18 @@ export class ShadowTerminal {
   private lastAppendedLine: string | null = null;
   private lastTail: string[] = [];
   private lastMenuOptions: string[] = [];
+  // Best-effort extracted question text for the richer notification
+  // read-aloud -- undefined whenever no menu is on screen to anchor the
+  // extraction to (see captureSnapshot). Not pushed to the phone
+  // continuously like tail/menuOptions; only read on-demand at the
+  // moment a Notification hook actually fires (see controlApi.ts).
+  private _question: string | undefined;
+  // Option label text (without the leading number/cursor), same order as
+  // lastMenuOptions -- e.g. ["Yes", "Yes, and don't ask again", "No"] for
+  // the same prompt lastMenuOptions holds ["1","2","3"] for. Only the
+  // option's own line, not any wrapped description on the line(s) below
+  // it, to keep the composed spokenPrompt below concise.
+  private _optionTexts: string[] = [];
   private rows: number;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private maxWaitTimer: ReturnType<typeof setTimeout> | null = null;
@@ -90,6 +108,23 @@ export class ShadowTerminal {
     this.term = new Terminal({ cols, rows, scrollback: 100_000, allowProposedApi: true });
     this.serializeAddon = new SerializeAddon();
     this.term.loadAddon(this.serializeAddon);
+  }
+
+  get question(): string | undefined {
+    return this._question;
+  }
+
+  /** Question plus its options, composed into one ready-to-speak string
+   * for the notification read-aloud (see BuddyForegroundService.kt) --
+   * e.g. "Do you want to make this edit to foo.ts? Options: 1: Yes.
+   * 2: Yes, and don't ask again this session. 3: No." Just the question
+   * alone if no options are on screen; undefined if there's no question
+   * either (nothing substantive to say). */
+  get spokenPrompt(): string | undefined {
+    if (!this._question) return undefined;
+    if (this._optionTexts.length === 0) return this._question;
+    const options = this._optionTexts.map((text, i) => `${i + 1}: ${text}`).join(". ");
+    return `${this._question} Options: ${options}.`;
   }
 
   resize(cols: number, rows: number) {
@@ -185,16 +220,42 @@ export class ShadowTerminal {
     // shows -- not the (much narrower) tail footer above, which is sized
     // for the phone's fixed-footer UI, not for catching a tall menu.
     const viewportStart = Math.max(0, effectiveTotal - this.rows);
+    const viewportLines: string[] = [];
     const menuOptions: string[] = [];
+    const optionTexts: string[] = [];
+    let firstMenuLineIndex = -1;
     for (let i = viewportStart; i < effectiveTotal; i++) {
       const line = buf.getLine(i);
       const text = line ? line.translateToString(true) : "";
+      viewportLines.push(text);
       const match = MENU_OPTION_REGEX.exec(text);
-      if (match && !menuOptions.includes(match[1])) menuOptions.push(match[1]);
+      if (match) {
+        if (!menuOptions.includes(match[1])) {
+          menuOptions.push(match[1]);
+          optionTexts.push(match[2].trim());
+        }
+        if (firstMenuLineIndex === -1) firstMenuLineIndex = viewportLines.length - 1;
+      }
     }
+    this._optionTexts = optionTexts;
     if (!sameLines(menuOptions, this.lastMenuOptions)) {
       this.onMenuOptions(menuOptions);
       this.lastMenuOptions = menuOptions;
+    }
+
+    // The question is whatever substantive text sits immediately above
+    // the first menu option -- walk backward past blank/border lines to
+    // find it. No menu on screen at all (many notifications aren't
+    // accompanied by one) means no anchor to extract from, so leave it
+    // undefined rather than guess at an arbitrary line.
+    this._question = undefined;
+    if (firstMenuLineIndex > 0) {
+      for (let i = firstMenuLineIndex - 1; i >= 0; i--) {
+        const text = viewportLines[i].trim();
+        if (text === "" || BORDER_OR_BLANK_REGEX.test(viewportLines[i])) continue;
+        this._question = text;
+        break;
+      }
     }
   }
 }

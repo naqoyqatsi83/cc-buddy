@@ -12,6 +12,7 @@ import dev.ccbuddy.app.data.ActivePin
 import dev.ccbuddy.app.data.HookNotifier
 import dev.ccbuddy.app.server.BuddyWsServer
 import dev.ccbuddy.app.server.NsdHelper
+import dev.ccbuddy.app.server.TtsSpeaker
 import dev.ccbuddy.app.util.PinGenerator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -30,6 +31,7 @@ class BuddyForegroundService : Service(), HookNotifier {
     private val scope = CoroutineScope(Dispatchers.Default + job)
     private lateinit var wsServer: BuddyWsServer
     private lateinit var nsdHelper: NsdHelper
+    private lateinit var ttsSpeaker: TtsSpeaker
 
     override fun onCreate() {
         super.onCreate()
@@ -43,6 +45,7 @@ class BuddyForegroundService : Service(), HookNotifier {
             phoneDeviceName = { Build.MODEL ?: "Android phone" }
         )
         nsdHelper = NsdHelper(this)
+        ttsSpeaker = TtsSpeaker(applicationContext)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -56,6 +59,7 @@ class BuddyForegroundService : Service(), HookNotifier {
     override fun onDestroy() {
         nsdHelper.unregister()
         wsServer.stop()
+        ttsSpeaker.shutdown()
         job.cancel()
         super.onDestroy()
     }
@@ -78,7 +82,7 @@ class BuddyForegroundService : Service(), HookNotifier {
     /** Notification hook fired — Claude is idle/waiting on a permission
      * prompt. This is the "buzz the phone" moment, unlike the silent
      * low-importance foreground notification. */
-    override fun onClaudeNotification(message: String) {
+    override fun onClaudeNotification(message: String, question: String?) {
         val openApp = PendingIntent.getActivity(
             this, 1,
             Intent(this, MainActivity::class.java),
@@ -93,6 +97,12 @@ class BuddyForegroundService : Service(), HookNotifier {
             .setContentIntent(openApp)
             .build()
         NotificationManagerCompat.from(this).notify(ALERT_NOTIFICATION_ID, notification)
+
+        // Additive, not a replacement for the visual notification above --
+        // opt-in via Settings, off by default.
+        if ((application as BuddyApp).settingsStore.readNotificationsAloud.value) {
+            ttsSpeaker.speak(question ?: message)
+        }
     }
 
     /** Stop hook fired — the turn finished, so whatever was waiting for

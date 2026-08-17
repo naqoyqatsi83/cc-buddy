@@ -32,6 +32,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   devices). `/buddy-list` always shows it, plus last-seen for offline
   peers; the phone's own paired-session list shows it too, gated behind a
   new "Show connection details" Settings toggle (off by default).
+- Read notifications aloud: a new "Read notifications aloud" Settings
+  toggle (off by default) speaks Claude Code's actual on-screen prompt via
+  Android's built-in text-to-speech when a Notification hook fires — not
+  just the hook's generic "Claude needs your attention" message, but the
+  real question and its numbered options (e.g. "Do you want to make this
+  edit to foo.ts? Options: 1: Yes. 2: Yes, and don't ask again this
+  session. 3: No."), extracted with the same viewport scan added for the
+  dynamic quick-reply buttons above. Falls back to the generic message
+  when nothing substantive is on screen to extract from.
 
 ### Changed
 - The phone's WS server now runs on Ktor's Netty engine instead of CIO —

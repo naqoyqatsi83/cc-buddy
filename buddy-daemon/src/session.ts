@@ -37,6 +37,12 @@ export interface BuddySession {
   menuOptions: string[];
   /** Fires whenever the detected menu options change (wholesale replace). */
   onMenuOptionsUpdate: (listener: (options: string[]) => void) => () => void;
+  /** Best-effort extracted question + options, composed into one
+   * ready-to-speak string (see ShadowTerminal.spokenPrompt) for the
+   * richer notification read-aloud -- read on-demand at the moment a
+   * Notification hook fires, undefined if nothing substantive is
+   * anchored above a menu on screen right now. */
+  spokenPrompt: string | undefined;
   /** ANSI reconstruction of the PTY's current active screen (see
    * ShadowTerminal.getSnapshotAnsi) -- sent to a newly-attaching phone
    * before live deltas so it starts fully painted instead of blank. */
@@ -194,6 +200,9 @@ export function startSession(opts: StartSessionOptions): BuddySession {
     onMenuOptionsUpdate: (listener) => {
       menuOptionsListeners.add(listener);
       return () => menuOptionsListeners.delete(listener);
+    },
+    get spokenPrompt() {
+      return shadow.spokenPrompt;
     },
     getSnapshot: () => shadow.getSnapshotAnsi(),
   };
