@@ -6,6 +6,7 @@ import { addToken, removeToken } from "./tokenStore.js";
 import { attachBridge, closeBridge } from "./bridge.js";
 import { cancelReconnect } from "./reconnect.js";
 import { openSecureWs } from "./tls.js";
+import { logger } from "./logger.js";
 import type { PeerInfo } from "./types.js";
 import type { BuddySession } from "./session.js";
 
@@ -75,19 +76,22 @@ export function pairWithPhone(
           token: msg.token,
           pairedAt: peer.pairedAt,
           certFingerprint,
-        }).catch((err) => console.error("failed to save pairing token", err));
+        }).catch((err) => logger.error("failed to save pairing token", { peerId: peer.id, error: String(err) }));
         session.info.peers.push(peer);
         attachBridge(session, peer.id, ws);
+        logger.info("peer paired", { peerId: peer.id, deviceName: peer.name, ip, port });
         resolve(peer);
       } else if (msg.type === "pair_denied") {
         clearTimeout(timer);
         ws.close();
+        logger.warn("pairing denied", { ip, port, reason: msg.reason ?? "unknown" });
         reject(new Error(msg.reason ?? "Pairing was denied on the phone"));
       }
     });
 
     ws.on("error", (err) => {
       clearTimeout(timer);
+      logger.warn("pairing dial failed", { ip, port, error: String(err) });
       reject(err);
     });
   });
@@ -96,10 +100,12 @@ export function pairWithPhone(
 export async function unpairPeer(session: BuddySession, peerId: string): Promise<boolean> {
   const idx = session.info.peers.findIndex((p) => p.id === peerId);
   if (idx === -1) return false;
+  const peer = session.info.peers[idx];
   session.info.peers.splice(idx, 1);
   await removeToken(peerId);
   cancelReconnect(peerId);
   closeBridge(peerId);
+  logger.info("peer unpaired", { peerId, deviceName: peer.name });
   return true;
 }
 

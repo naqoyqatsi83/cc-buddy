@@ -1,6 +1,7 @@
 import { WebSocket } from "ws";
 import type { BuddySession } from "./session.js";
 import { consumeSuppressedReconnect, scheduleReconnect, suppressReconnect } from "./reconnect.js";
+import { logger } from "./logger.js";
 
 const activeSockets = new Map<string, WebSocket>();
 
@@ -139,6 +140,7 @@ export function attachBridge(session: BuddySession, peerId: string, ws: WebSocke
     // (network drop, phone app killed, Tailscale re-route) is worth
     // retrying to get back to a durable connection.
     if (!consumeSuppressedReconnect(peerId)) {
+      logger.info("peer disconnected, scheduling reconnect", { peerId, deviceName: peer?.name });
       scheduleReconnect(session, peerId);
     }
   };

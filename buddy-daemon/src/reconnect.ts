@@ -1,6 +1,7 @@
 import { attachBridge } from "./bridge.js";
 import { getToken, removeToken } from "./tokenStore.js";
 import { openSecureWs } from "./tls.js";
+import { logger } from "./logger.js";
 import type { BuddySession } from "./session.js";
 
 // A brief network blip (mobile network handoff, Tailscale re-routing around
@@ -65,9 +66,10 @@ async function attemptReconnect(session: BuddySession, peerId: string, attempt: 
     settled = true;
     clearTimeout(timeout);
     ws.terminate();
-    removeToken(peerId).catch((err) => console.error("failed to remove stale token", err));
+    removeToken(peerId).catch((err) => logger.error("failed to remove stale token", { peerId, error: String(err) }));
     const idx = session.info.peers.findIndex((p) => p.id === peerId);
     if (idx !== -1) session.info.peers.splice(idx, 1);
+    logger.warn("peer dropped (token/cert rejected)", { peerId, deviceName: peer.name });
   };
 
   // Verify the phone's cert still matches what was pinned at pairing time
@@ -111,6 +113,7 @@ async function attemptReconnect(session: BuddySession, peerId: string, attempt: 
       clearTimeout(timeout);
       peer.connected = true;
       attachBridge(session, peerId, ws);
+      logger.info("peer reconnected", { peerId, deviceName: peer.name, attempt });
     } else if (msg.type === "reconnect_denied") {
       dropPeer();
     }
@@ -118,6 +121,7 @@ async function attemptReconnect(session: BuddySession, peerId: string, attempt: 
 
   ws.on("error", () => {
     clearTimeout(timeout);
+    logger.info("reconnect attempt failed, retrying", { peerId, deviceName: peer.name, attempt });
     retry();
   });
 }

@@ -48,6 +48,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   defense before this — brute-forcing that window at LAN speed with no
   rate limiting was realistic. A successful pairing clears the source's
   history, so a legitimate device that mistypes once isn't penalized.
+- Basic daemon-side logging to `~/.buddy/daemon.log` (single-generation
+  size-based rotation at 5MB) — connection lifecycle events (daemon start,
+  pair, unpair, reconnect attempts/success, dropped/rejected peers) and
+  errors are now persisted, not just printed to whatever terminal
+  `buddy start` happens to be running in. A problem that happens while
+  nobody's watching the terminal now leaves a trace to debug afterward.
 
 ### Changed
 - The phone's WS server now runs on Ktor's Netty engine instead of CIO —

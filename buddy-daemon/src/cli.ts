@@ -5,6 +5,7 @@ import { startControlApi, type SessionRef } from "./controlApi.js";
 import { startSession } from "./session.js";
 import { sessionRegistry } from "./sessionRegistry.js";
 import { installHooks, uninstallHooks } from "./hooksConfig.js";
+import { logger } from "./logger.js";
 
 const program = new Command();
 
@@ -56,6 +57,7 @@ program
 
     sessionRef.current = session;
     sessionRegistry.add(session);
+    logger.info("daemon started", { sessionId: session.info.id, cwd: opts.cwd, controlPort });
   });
 
 program.parseAsync(process.argv);
