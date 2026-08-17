@@ -97,6 +97,20 @@ export function attachBridge(session: BuddySession, peerId: string, ws: WebSocke
     }
   }, 10_000);
 
+  // Input applied from the phone is written straight into the PTY the
+  // same way local keystrokes are -- indistinguishable in the terminal's
+  // own output, since the PTY doesn't know where a keystroke came from.
+  // Logging it (audit marker for #8) goes to the daemon log rather than
+  // injecting a notice directly into the live terminal output: Claude
+  // Code's TUI manages its own absolute-cursor-positioned redraws, and an
+  // out-of-band stdout write in the middle of one risks visibly
+  // corrupting the display for a cosmetic marker.
+  const logPhoneInput = (data: string, raw = false) => {
+    const peerName = session.info.peers.find((p) => p.id === peerId)?.name ?? peerId;
+    const preview = data.length > 200 ? data.slice(0, 200) + "…" : data;
+    logger.info("input from phone", { peerId, deviceName: peerName, raw, preview });
+  };
+
   ws.on("message", (raw) => {
     let msg: any;
     try {
@@ -105,10 +119,12 @@ export function attachBridge(session: BuddySession, peerId: string, ws: WebSocke
       return;
     }
     if (msg.type === "input" && typeof msg.data === "string") {
+      logPhoneInput(msg.data);
       session.pty.write(msg.data + "\r");
     } else if (msg.type === "raw_input" && typeof msg.data === "string") {
       // A literal keystroke (e.g. Tab, for autocomplete) — must NOT get
       // an Enter appended, unlike a complete reply.
+      logPhoneInput(msg.data, true);
       session.pty.write(msg.data);
     } else if (msg.type === "ping" && typeof msg.ts === "number") {
       if (ws.readyState === WebSocket.OPEN) {

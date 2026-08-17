@@ -54,6 +54,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   errors are now persisted, not just printed to whatever terminal
   `buddy start` happens to be running in. A problem that happens while
   nobody's watching the terminal now leaves a trace to debug afterward.
+- An audit marker for phone-originated input: every reply/keystroke
+  applied from the phone now logs to `~/.buddy/daemon.log` (deviceName,
+  peerId, a truncated preview of the text) instead of being
+  indistinguishable from local keyboard input in the terminal's own
+  output. Logged rather than injected directly into the live terminal
+  display — Claude Code's TUI manages its own absolute-cursor-positioned
+  redraws, and an out-of-band stdout write in the middle of one risks
+  visibly corrupting the display for a cosmetic marker.
 
 ### Changed
 - The phone's WS server now runs on Ktor's Netty engine instead of CIO —
