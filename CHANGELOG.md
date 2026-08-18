@@ -3,6 +3,32 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+- Settings now surfaces a manufacturer-specific "battery management" row
+  (Samsung, Xiaomi, Huawei, Oppo, Vivo, OnePlus) on top of the existing
+  stock Android battery-optimization exemption. Those OEM skins layer
+  their own "sleeping apps" / autostart management on background apps
+  that the standard exemption doesn't cover, so the connection could
+  still get killed even when the app reports itself exempt. Deep-links
+  straight to that OEM's settings screen where recognized, falling back
+  to the app's own details page otherwise.
+
+### Fixed
+- The app could crash-loop on startup with `AEADBadTagException` if
+  Android restored its `EncryptedSharedPreferences` (paired-session tokens,
+  TLS identity) from a backup — the Android Keystore key that encrypted
+  that data is device-specific and is never restored with it, so every
+  decrypt attempt failed and neither `uninstall` nor `reinstall` cleared
+  it (the restore just reapplied). `allowBackup` is now `false` (this data
+  shouldn't leave the device anyway), and both stores now self-heal by
+  discarding and regenerating an undecryptable store instead of crashing
+  — previously paired sessions are lost in that case, requiring a re-pair,
+  but the app starts. Reinstalling after this fix will change the phone's
+  TLS identity, so any already-paired PC sessions need to be re-paired
+  once (their pinned cert fingerprint won't match anymore).
+
 ## [0.3.1] - 2026-08-17
 
 ### Fixed

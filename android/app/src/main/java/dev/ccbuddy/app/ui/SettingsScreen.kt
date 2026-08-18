@@ -29,6 +29,8 @@ fun SettingsScreen(
     batteryOptimizationExempt: Boolean,
     onRequestBatteryExemption: () -> Unit,
     onOpenBatterySettings: () -> Unit,
+    oemBatteryManagementLabel: String?,
+    onOpenOemBatterySettings: () -> Unit,
     onFontSizeOverrideChange: (Int?) -> Unit,
     onCompactModeChange: (Boolean) -> Unit,
     onShowConnectionDetailsChange: (Boolean) -> Unit,
@@ -147,6 +149,27 @@ fun SettingsScreen(
             // themselves.
             TextButton(onClick = if (batteryOptimizationExempt) onOpenBatterySettings else onRequestBatteryExemption) {
                 Text(if (batteryOptimizationExempt) "App settings" else "Disable")
+            }
+        }
+
+        if (oemBatteryManagementLabel != null) {
+            Spacer(Modifier.height(16.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("$oemBatteryManagementLabel battery management", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "Some phones kill background apps even when exempt above — allow CC Buddy to auto-start / run in background here too",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                TextButton(onClick = onOpenOemBatterySettings) {
+                    Text("Open")
+                }
             }
         }
     }

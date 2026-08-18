@@ -28,8 +28,10 @@ import dev.ccbuddy.app.ui.TerminalScreen
 import dev.ccbuddy.app.ui.theme.CCBuddyTheme
 import dev.ccbuddy.app.util.NetworkUtils
 import dev.ccbuddy.app.util.appDetailsSettingsIntent
+import dev.ccbuddy.app.util.hasKnownOemBatteryManagement
 import dev.ccbuddy.app.util.ignoreBatteryOptimizationsIntent
 import dev.ccbuddy.app.util.isIgnoringBatteryOptimizations
+import dev.ccbuddy.app.util.oemBatterySettingsIntent
 
 class MainActivity : ComponentActivity() {
 
@@ -116,6 +118,12 @@ class MainActivity : ComponentActivity() {
                             onOpenBatterySettings = {
                                 startActivity(appDetailsSettingsIntent(this@MainActivity))
                             },
+                            oemBatteryManagementLabel = if (hasKnownOemBatteryManagement()) {
+                                Build.MANUFACTURER.replaceFirstChar { it.uppercase() }
+                            } else {
+                                null
+                            },
+                            onOpenOemBatterySettings = { openOemBatterySettings() },
                             onFontSizeOverrideChange = { app.settingsStore.setFontSizeOverride(it) },
                             onCompactModeChange = { app.settingsStore.setCompactMode(it) },
                             onShowConnectionDetailsChange = { app.settingsStore.setShowConnectionDetails(it) },
@@ -169,6 +177,24 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * OEM battery/autostart screens are launched by component name, not a
+     * documented action -- they can still fail on OS versions where the
+     * component moved again despite [oemBatterySettingsIntent]'s resolve
+     * check. Fall back to the app's own details page (always resolvable)
+     * rather than crashing on ActivityNotFoundException.
+     */
+    private fun openOemBatterySettings() {
+        val intent = oemBatterySettingsIntent(this) ?: appDetailsSettingsIntent(this)
+        try {
+            startActivity(intent)
+        } catch (e: android.content.ActivityNotFoundException) {
+            startActivity(appDetailsSettingsIntent(this))
+        } catch (e: SecurityException) {
+            startActivity(appDetailsSettingsIntent(this))
         }
     }
 

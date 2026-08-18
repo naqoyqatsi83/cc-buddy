@@ -17,13 +17,29 @@ class TokenStore(context: Context) {
     private val prefs: SharedPreferences
 
     init {
+        prefs = try {
+            createEncryptedPrefs(context)
+        } catch (e: Exception) {
+            // The stored ciphertext can outlive the Android Keystore key
+            // that encrypted it (e.g. it was one of the -- now disabled --
+            // Auto Backup restores, or the OS invalidated the key), in
+            // which case every read throws instead of just returning
+            // empty. That's unrecoverable in place, but it only costs
+            // previously paired sessions (the user re-pairs), not a
+            // permanently crash-looping app.
+            context.deleteSharedPreferences(PREFS_NAME)
+            createEncryptedPrefs(context)
+        }
+    }
+
+    private fun createEncryptedPrefs(context: Context): SharedPreferences {
         val masterKey = MasterKey.Builder(context)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
             .build()
 
-        prefs = EncryptedSharedPreferences.create(
+        return EncryptedSharedPreferences.create(
             context,
-            "buddy_tokens",
+            PREFS_NAME,
             masterKey,
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
@@ -69,6 +85,7 @@ class TokenStore(context: Context) {
     }
 
     companion object {
+        private const val PREFS_NAME = "buddy_tokens"
         private const val KEY_PEERS = "peers"
     }
 }

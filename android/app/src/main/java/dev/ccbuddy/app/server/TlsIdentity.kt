@@ -37,16 +37,17 @@ class TlsIdentity(val keyStore: KeyStore, val alias: String, val password: CharA
             Security.removeProvider("BC")
             Security.insertProviderAt(BouncyCastleProvider(), 1)
 
-            val masterKey = MasterKey.Builder(context)
-                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .build()
-            val prefs = EncryptedSharedPreferences.create(
-                context,
-                PREFS_NAME,
-                masterKey,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            )
+            val prefs = try {
+                createEncryptedPrefs(context)
+            } catch (e: Exception) {
+                // Same class of failure as TokenStore: the stored password
+                // can outlive the Android Keystore key that encrypted it.
+                // Recovery below already handles a missing/reset password
+                // by generating a fresh identity, so just clear the prefs
+                // rather than crashing the foreground service.
+                context.deleteSharedPreferences(PREFS_NAME)
+                createEncryptedPrefs(context)
+            }
 
             val keystoreFile = File(context.filesDir, KEYSTORE_FILE)
             val keyStore = KeyStore.getInstance("PKCS12")
@@ -78,6 +79,15 @@ class TlsIdentity(val keyStore: KeyStore, val alias: String, val password: CharA
 
             return TlsIdentity(keyStore, ALIAS, password)
         }
+
+        private fun createEncryptedPrefs(context: Context) =
+            EncryptedSharedPreferences.create(
+                context,
+                PREFS_NAME,
+                MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
 
         private fun generatePassword(): CharArray {
             val bytes = ByteArray(32)
