@@ -89,7 +89,23 @@ describe("ShadowTerminal", () => {
     flushDebounce();
 
     expect(term.spokenPrompt).toBe(
-      "Do you want to make this edit to foo.ts? Options: 1: Yes. 2: No."
+      // Trailing U+00A0 before the closing period on a bare "No" option --
+      // works around Android TextToSpeech reading "No." as "Number" at the
+      // end of an utterance (see ttsSafeOptionText).
+      "Do you want to make this edit to foo.ts? Options: 1: Yes. 2: No ."
+    );
+  });
+
+  it("does not alter option text that isn't a bare \"No\"", () => {
+    term.write(
+      "Do you want to make this edit to foo.ts?\r\n" +
+        "❯ 1. Yes\r\n" +
+        "  2. No, and don't ask again\r\n"
+    );
+    flushDebounce();
+
+    expect(term.spokenPrompt).toBe(
+      "Do you want to make this edit to foo.ts? Options: 1: Yes. 2: No, and don't ask again."
     );
   });
 

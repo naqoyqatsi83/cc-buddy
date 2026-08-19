@@ -14,9 +14,16 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   new `vitest` dev dependency and `npm test` in `buddy-daemon/`. A new
   `daemon-tests.yml` CI workflow runs them (plus the `tsc` build) on every
   push/PR touching `buddy-daemon/`, separate from the release-only APK
-  build workflow. The Android side has no tests yet — its logic is mostly
-  UI-heavy Compose code, lower priority to unit test than the daemon's
-  pure-logic pieces.
+  build workflow. The Android side's logic is mostly UI-heavy Compose
+  code, not worth unit testing, but its few pure-logic pieces now have
+  JVM unit tests too: the pairing PIN rate limiter's backoff/lockout/reset
+  behavior (`PairingAttemptLimiter`, refactored to take an injectable
+  clock so tests don't sleep through a real 60s window and 30s lockout),
+  PIN generation, and the Wi-Fi/Tailscale address-labeling logic
+  (`NetworkUtils`, with the Tailscale-CGNAT-range check and the label
+  picker split out into testable functions). 21 tests, run via a new
+  `android-tests.yml` CI workflow (`./gradlew testDebugUnitTest`) on every
+  push/PR touching `android/`.
 - Settings now surfaces a manufacturer-specific "battery management" row
   (Samsung, Xiaomi, Huawei, Oppo, Vivo, OnePlus) on top of the existing
   stock Android battery-optimization exemption. Those OEM skins layer
@@ -46,6 +53,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   largest font size that actually fits (down to a floor), same auto-fit
   approach the terminal mirror already uses for its own sizing; horizontal
   scroll remains as a fallback for anything still too narrow at the floor.
+- The TTS read-aloud misread a plain "No" option as "Number" when it was
+  the last (or only) one on screen — Android's TextToSpeech normalizer
+  reads a bare "No." at the very end of an utterance as the abbreviation
+  ("No. 5" → "Number 5"), not the word, since nothing follows it to
+  disambiguate. `spokenPrompt` (`shadowTerminal.ts`) now inserts an
+  inaudible non-breaking space before that closing period on a bare "No",
+  which breaks the abbreviation match without changing the actual word
+  spoken or anything else about the phrase.
 
 ## [0.3.1] - 2026-08-17
 

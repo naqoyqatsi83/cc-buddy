@@ -67,6 +67,22 @@ const MENU_OPTION_REGEX = /^\s*[❯>]?\s*(\d{1,2})[.)]\s+(\S.*)$/;
 // above it, so the question doesn't end up being a border line instead.
 const BORDER_OR_BLANK_REGEX = /^[\s─│┌┐└┘├┤┬┴┼╭╮╰╯▐▌═║╔╗╚╝]*$/;
 
+// Android's TextToSpeech normalizer reads a bare "No." at the very end of
+// an utterance as the abbreviation "No." (as in "No. 5", read "Number 5")
+// instead of the word "No" -- it only trips when the period immediately
+// follows the word with nothing else after it, which is exactly what the
+// last (or only) option composes into below when its text is an unadorned
+// "No". A trailing non-breaking space (U+00A0) between the word and
+// spokenPrompt's closing period breaks that adjacency -- inaudible, but
+// no longer matches the abbreviation pattern -- without changing the
+// actual word spoken. Safe to leave in: neither the daemon->phone JSON
+// payload (controlApi.ts) nor the Android side (BuddyWsServer.kt's
+// `.ifBlank { null }`) trims the string, they only check whether the
+// *whole* thing is empty.
+function ttsSafeOptionText(text: string): string {
+  return text === "No" ? "No " : text;
+}
+
 export class ShadowTerminal {
   private term: TerminalType;
   private serializeAddon: SerializeAddon;
@@ -117,13 +133,16 @@ export class ShadowTerminal {
   /** Question plus its options, composed into one ready-to-speak string
    * for the notification read-aloud (see BuddyForegroundService.kt) --
    * e.g. "Do you want to make this edit to foo.ts? Options: 1: Yes.
-   * 2: Yes, and don't ask again this session. 3: No." Just the question
-   * alone if no options are on screen; undefined if there's no question
-   * either (nothing substantive to say). */
+   * 2: Yes, and don't ask again this session. 3: No ." (see
+   * ttsSafeOptionText for that trailing space before the period on a bare
+   * "No"). Just the question alone if no options are on screen; undefined
+   * if there's no question either (nothing substantive to say). */
   get spokenPrompt(): string | undefined {
     if (!this._question) return undefined;
     if (this._optionTexts.length === 0) return this._question;
-    const options = this._optionTexts.map((text, i) => `${i + 1}: ${text}`).join(". ");
+    const options = this._optionTexts
+      .map((text, i) => `${i + 1}: ${ttsSafeOptionText(text)}`)
+      .join(". ");
     return `${this._question} Options: ${options}.`;
   }
 
