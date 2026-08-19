@@ -1,0 +1,33 @@
+name: Daemon Tests
+
+# Unlike build-apk.yml this runs on every push/PR touching the daemon --
+# there's no secret/signing dependency here, and unit tests are exactly
+# the kind of check that's only useful caught before a merge, not just at
+# release time.
+on:
+  push:
+    paths:
+      - "buddy-daemon/**"
+  pull_request:
+    paths:
+      - "buddy-daemon/**"
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: buddy-daemon
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: buddy-daemon/package-lock.json
+
+      - run: npm ci
+      - run: npm test
+      - run: npm run build

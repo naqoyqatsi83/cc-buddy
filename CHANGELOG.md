@@ -6,6 +6,17 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Unit tests for the daemon's parsing/heuristic logic, the kind of thing
+  that silently regresses without coverage: menu-option detection and
+  question extraction (`shadowTerminal.ts`), the reconnect state machine's
+  backoff/suppression/cert-and-token-rejection paths (`reconnect.ts`), and
+  hook install/uninstall path-matching (`hooksConfig.ts`) — 34 tests via a
+  new `vitest` dev dependency and `npm test` in `buddy-daemon/`. A new
+  `daemon-tests.yml` CI workflow runs them (plus the `tsc` build) on every
+  push/PR touching `buddy-daemon/`, separate from the release-only APK
+  build workflow. The Android side has no tests yet — its logic is mostly
+  UI-heavy Compose code, lower priority to unit test than the daemon's
+  pure-logic pieces.
 - Settings now surfaces a manufacturer-specific "battery management" row
   (Samsung, Xiaomi, Huawei, Oppo, Vivo, OnePlus) on top of the existing
   stock Android battery-optimization exemption. Those OEM skins layer
