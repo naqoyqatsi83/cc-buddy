@@ -1,7 +1,9 @@
 package dev.ccbuddy.app
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
@@ -32,6 +34,8 @@ import dev.ccbuddy.app.util.hasKnownOemBatteryManagement
 import dev.ccbuddy.app.util.ignoreBatteryOptimizationsIntent
 import dev.ccbuddy.app.util.isIgnoringBatteryOptimizations
 import dev.ccbuddy.app.util.oemBatterySettingsIntent
+import dev.ccbuddy.app.util.UpdateChecker
+import dev.ccbuddy.app.util.UpdateInfo
 
 class MainActivity : ComponentActivity() {
 
@@ -76,6 +80,15 @@ class MainActivity : ComponentActivity() {
 
                     var batteryOptimizationExempt by remember {
                         mutableStateOf(isIgnoringBatteryOptimizations(this@MainActivity))
+                    }
+
+                    var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
+                    val dismissedUpdateVersion by app.settingsStore.dismissedUpdateVersion.collectAsState()
+                    // Once per app open, not on every recomposition -- a
+                    // "nice to know" background check, never worth
+                    // repeating on its own or blocking anything on.
+                    LaunchedEffect(Unit) {
+                        updateInfo = UpdateChecker.checkForUpdate(BuildConfig.VERSION_NAME)
                     }
                     val lifecycleOwner = LocalLifecycleOwner.current
                     DisposableEffect(lifecycleOwner) {
@@ -165,6 +178,13 @@ class MainActivity : ComponentActivity() {
                             batteryOptimizationExempt = batteryOptimizationExempt,
                             onRequestBatteryExemption = {
                                 requestBatteryExemption.launch(ignoreBatteryOptimizationsIntent(this@MainActivity))
+                            },
+                            updateInfo = updateInfo?.takeIf { it.latestVersion != dismissedUpdateVersion },
+                            onOpenReleasePage = {
+                                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(updateInfo!!.releaseUrl)))
+                            },
+                            onDismissUpdate = {
+                                app.settingsStore.setDismissedUpdateVersion(updateInfo?.latestVersion)
                             },
                             onRegeneratePin = {
                                 regeneratePinDirectly()

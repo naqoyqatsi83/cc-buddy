@@ -51,11 +51,24 @@ class SettingsStore(context: Context) {
         _readNotificationsAloud.value = enabled
     }
 
+    // The version string of the last update banner the user dismissed
+    // (see UpdateChecker) -- null means nothing's been dismissed. Keyed by
+    // version rather than a plain boolean so dismissing "update to 0.4.0"
+    // doesn't also silence a later "update to 0.5.0" banner.
+    private val _dismissedUpdateVersion = MutableStateFlow(prefs.getString(KEY_DISMISSED_UPDATE, null))
+    val dismissedUpdateVersion: StateFlow<String?> = _dismissedUpdateVersion
+
+    fun setDismissedUpdateVersion(version: String?) {
+        prefs.edit().putString(KEY_DISMISSED_UPDATE, version).apply()
+        _dismissedUpdateVersion.value = version
+    }
+
     companion object {
         private const val KEY_FONT_SIZE = "font_size_override"
         private const val KEY_COMPACT = "compact_mode"
         private const val KEY_CONNECTION_DETAILS = "show_connection_details"
         private const val KEY_READ_ALOUD = "read_notifications_aloud"
+        private const val KEY_DISMISSED_UPDATE = "dismissed_update_version"
         const val MIN_FONT_SIZE = 8
         const val MAX_FONT_SIZE = 22
     }

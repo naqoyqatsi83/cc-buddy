@@ -33,6 +33,7 @@ import dev.ccbuddy.app.data.ActivePin
 import dev.ccbuddy.app.data.PeerSession
 import dev.ccbuddy.app.data.PendingPairRequest
 import dev.ccbuddy.app.util.LocalAddress
+import dev.ccbuddy.app.util.UpdateInfo
 import kotlinx.coroutines.delay
 
 @Composable
@@ -44,6 +45,9 @@ fun PairingScreen(
     showConnectionDetails: Boolean,
     batteryOptimizationExempt: Boolean,
     onRequestBatteryExemption: () -> Unit,
+    updateInfo: UpdateInfo?,
+    onOpenReleasePage: () -> Unit,
+    onDismissUpdate: () -> Unit,
     onRegeneratePin: () -> Unit,
     onUnpair: (PeerSession) -> Unit,
     onOpenTerminal: (PeerSession) -> Unit,
@@ -56,6 +60,11 @@ fun PairingScreen(
         }
         AsciiLogo()
         Spacer(Modifier.height(24.dp))
+
+        if (updateInfo != null) {
+            UpdateAvailableCard(updateInfo.latestVersion, onOpenReleasePage, onDismissUpdate)
+            Spacer(Modifier.height(16.dp))
+        }
 
         PinCard(activePin, onRegeneratePin)
         Spacer(Modifier.height(16.dp))
@@ -145,6 +154,29 @@ private fun PinCard(activePin: ActivePin?, onRegeneratePin: () -> Unit) {
             Spacer(Modifier.height(12.dp))
             Button(onClick = onRegeneratePin) {
                 Text("Regenerate PIN")
+            }
+        }
+    }
+}
+
+@Composable
+private fun UpdateAvailableCard(
+    latestVersion: String,
+    onOpenReleasePage: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Update available: v$latestVersion", style = MaterialTheme.typography.titleSmall)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "A newer release is available on GitHub.",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onOpenReleasePage) { Text("View release") }
+                TextButton(onClick = onDismiss) { Text("Dismiss") }
             }
         }
     }

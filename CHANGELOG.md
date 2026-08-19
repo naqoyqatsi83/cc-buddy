@@ -16,6 +16,15 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   regardless of who runs `npm run build` or how.
 
 ### Added
+- The Android app now checks GitHub for a newer release on open (a
+  best-effort, silent-on-failure hit against the public releases API —
+  no network, GitHub down, anything unexpected all just skip it quietly)
+  and shows a dismissible "Update available" card on the pairing screen
+  linking to the release page when one exists. Dismissal is keyed by
+  version, so dismissing one release's banner doesn't silence a later
+  one. There's still no in-app auto-update — the app is sideloaded, not
+  distributed through a store — this only closes the "how would I even
+  know" gap.
 - Unit tests for the daemon's parsing/heuristic logic, the kind of thing
   that silently regresses without coverage: menu-option detection and
   question extraction (`shadowTerminal.ts`), the reconnect state machine's
