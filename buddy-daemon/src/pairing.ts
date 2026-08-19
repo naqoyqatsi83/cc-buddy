@@ -113,13 +113,20 @@ export async function unpairPeer(session: BuddySession, peerId: string): Promise
 // paired -- login@hostname:cwd (e.g. "gus@laptop:cc-buddy") mirrors what
 // you'd see in a real terminal prompt and is enough to tell sessions apart
 // at a glance on the phone.
-function hostDeviceName(sessionCwd: string): string {
+export function hostDeviceName(sessionCwd: string): string {
   const user = os.userInfo().username || "user";
   const host = (process.env.COMPUTERNAME || os.hostname() || "PC").split(".")[0];
   // The session's own --cwd (the project being worked on), not
   // process.cwd() -- that's wherever `buddy` itself was invoked from,
   // which is frequently the daemon's own install directory rather than
   // the project the user is actually pairing to look at.
-  const cwd = path.basename(sessionCwd) || "/";
+  //
+  // path.resolve() first: --cwd is whatever the user typed verbatim (the
+  // commander default is process.cwd(), which happens to already be
+  // absolute, but an explicit relative value like `--cwd .` is not) --
+  // basename-ing an unresolved "." just gives back "." itself, showing up
+  // on the phone as a session literally named "user@host:." instead of
+  // the actual project directory name.
+  const cwd = path.basename(path.resolve(sessionCwd)) || "/";
   return `${user}@${host}:${cwd}`;
 }

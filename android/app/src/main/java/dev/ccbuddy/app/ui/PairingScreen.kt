@@ -1,5 +1,6 @@
 package dev.ccbuddy.app.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,6 +16,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -50,6 +52,7 @@ fun PairingScreen(
     onDismissUpdate: () -> Unit,
     onRegeneratePin: () -> Unit,
     onUnpair: (PeerSession) -> Unit,
+    onRename: (PeerSession, String) -> Unit,
     onOpenTerminal: (PeerSession) -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier
@@ -98,7 +101,7 @@ fun PairingScreen(
             Text("None yet. Run /buddy-pair <ip> <pin> from a buddy-daemon session.")
         } else {
             Column {
-                peers.forEach { peer -> PeerRow(peer, showConnectionDetails, onUnpair, onOpenTerminal) }
+                peers.forEach { peer -> PeerRow(peer, showConnectionDetails, onUnpair, onRename, onOpenTerminal) }
             }
         }
     }
@@ -206,15 +209,37 @@ private fun PeerRow(
     peer: PeerSession,
     showConnectionDetails: Boolean,
     onUnpair: (PeerSession) -> Unit,
+    onRename: (PeerSession, String) -> Unit,
     onOpenTerminal: (PeerSession) -> Unit
 ) {
+    // Keyed by peer.id so switching which row's dialog is showing (there's
+    // one PeerRow per paired session) can't leak open state onto the
+    // wrong peer if the list reorders.
+    var showRenameDialog by remember(peer.id) { mutableStateOf(false) }
+    if (showRenameDialog) {
+        RenamePeerDialog(
+            currentName = peer.deviceName,
+            onConfirm = { newName ->
+                onRename(peer, newName)
+                showRenameDialog = false
+            },
+            onDismiss = { showRenameDialog = false }
+        )
+    }
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column {
-            Text(peer.deviceName, fontWeight = FontWeight.Medium)
+            // Tap-to-rename -- the PC-derived `user@host:dir` name alone
+            // doesn't disambiguate two differently-located checkouts that
+            // happen to share a directory name.
+            Text(
+                peer.deviceName,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.clickable { showRenameDialog = true }
+            )
             val statusText = if (peer.connected) {
                 val latency = peer.latencyMs
                 if (showConnectionDetails && latency != null) "online · ${latency}ms" else "online"
@@ -237,6 +262,33 @@ private fun PeerRow(
             }
         }
     }
+}
+
+@Composable
+private fun RenamePeerDialog(
+    currentName: String,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var text by remember { mutableStateOf(currentName) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Rename session") },
+        text = {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                singleLine = true,
+                placeholder = { Text("Session name") }
+            )
+        },
+        confirmButton = {
+            Button(onClick = { onConfirm(text) }, enabled = text.isNotBlank()) { Text("Save") }
+        },
+        dismissButton = {
+            OutlinedButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
 }
 
 @Composable

@@ -191,6 +191,7 @@ class MainActivity : ComponentActivity() {
                                 localAddresses = NetworkUtils.localAddresses()
                             },
                             onUnpair = { peer -> app.peerRepository.remove(peer.id) },
+                            onRename = { peer, newName -> app.peerRepository.rename(peer.id, newName) },
                             onOpenTerminal = { peer -> viewingPeerId = peer.id },
                             onOpenSettings = { showSettings = true }
                         )

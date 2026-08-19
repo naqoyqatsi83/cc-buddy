@@ -3,6 +3,22 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.1] - 2026-08-19
+
+### Added
+- A paired session's name on the phone can now be renamed by tapping it
+  (opens a text field, Save/Cancel) — the PC-derived `user@host:dir` name
+  doesn't disambiguate two different checkouts that happen to share a
+  directory name. Persists across reconnects, resets only on a full
+  unpair + re-pair (deviceName is only ever set at initial pairing).
+
+### Fixed
+- `buddy start --cwd .` (or any relative `--cwd`) showed up on the phone
+  as a session literally named `user@host:.` instead of the actual
+  project directory name — `hostDeviceName()` basename'd the raw,
+  unresolved `--cwd` value, and `path.basename('.')` is just `"."` again.
+  Now resolves it to an absolute path first (#21).
+
 ## [0.4.0] - 2026-08-19
 
 ### Added

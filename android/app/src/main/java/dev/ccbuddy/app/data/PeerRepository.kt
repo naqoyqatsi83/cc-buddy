@@ -35,4 +35,19 @@ class PeerRepository(private val tokenStore: TokenStore) {
         tokenStore.remove(id)
         _peers.update { current -> current.filterNot { it.id == id } }
     }
+
+    // A user-chosen override for the PC-derived `user@host:dir` name --
+    // the directory basename alone doesn't disambiguate two different
+    // checkouts that happen to share a name. Persists via the same
+    // upsert() the initial pairing uses, so it survives reconnects
+    // (which never re-send/overwrite deviceName -- see BuddyWsServer's
+    // reconnect handling) and only resets on a full unpair + re-pair.
+    fun rename(id: String, newName: String) {
+        val trimmed = newName.trim()
+        if (trimmed.isEmpty()) return
+        val current = _peers.value.find { it.id == id } ?: return
+        val renamed = current.copy(deviceName = trimmed)
+        tokenStore.upsert(renamed)
+        _peers.update { peers -> peers.map { if (it.id == id) renamed else it } }
+    }
 }
