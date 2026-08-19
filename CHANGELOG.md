@@ -28,6 +28,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   but the app starts. Reinstalling after this fix will change the phone's
   TLS identity, so any already-paired PC sessions need to be re-paired
   once (their pinned cert fingerprint won't match anymore).
+- The pairing screen's block-letter "CC BUDDY" banner ran off the right
+  edge on a narrower/higher-density screen (Galaxy A34) with no visible
+  hint it could be scrolled — it was only ever fit-tested at a fixed 10sp
+  on wider phones. It now measures the available width and picks the
+  largest font size that actually fits (down to a floor), same auto-fit
+  approach the terminal mirror already uses for its own sizing; horizontal
+  scroll remains as a fallback for anything still too narrow at the floor.
 
 ## [0.3.1] - 2026-08-17
 
