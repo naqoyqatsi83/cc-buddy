@@ -3,17 +3,7 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
-
-### Fixed
-- `npm run build` in `buddy-daemon/` could leave the globally-linked
-  `buddy` command unusable (`Permission denied`) after any rebuild.
-  `npm link` sets `dist/cli.js`'s executable bit once at link time, but
-  `tsc` recreates that file from scratch on every build without
-  preserving it — since `buddy` is `npm link`ed straight to this repo's
-  `buddy-daemon/`, that's the exact file it runs. A new `postbuild` step
-  re-applies the executable bit after every build, so this can't recur
-  regardless of who runs `npm run build` or how.
+## [0.4.0] - 2026-08-19
 
 ### Added
 - The Android app now checks GitHub for a newer release on open (a
@@ -53,6 +43,14 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   to the app's own details page otherwise.
 
 ### Fixed
+- `npm run build` in `buddy-daemon/` could leave the globally-linked
+  `buddy` command unusable (`Permission denied`) after any rebuild.
+  `npm link` sets `dist/cli.js`'s executable bit once at link time, but
+  `tsc` recreates that file from scratch on every build without
+  preserving it — since `buddy` is `npm link`ed straight to this repo's
+  `buddy-daemon/`, that's the exact file it runs. A new `postbuild` step
+  re-applies the executable bit after every build, so this can't recur
+  regardless of who runs `npm run build` or how.
 - The app could crash-loop on startup with `AEADBadTagException` if
   Android restored its `EncryptedSharedPreferences` (paired-session tokens,
   TLS identity) from a backup — the Android Keystore key that encrypted
