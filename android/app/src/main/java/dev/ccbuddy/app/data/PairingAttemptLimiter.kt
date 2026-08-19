@@ -10,7 +10,9 @@ package dev.ccbuddy.app.data
  * -- keyed by remote address, not global, so one noisy/malicious source
  * can't lock out a legitimate pairing attempt from elsewhere.
  */
-class PairingAttemptLimiter {
+// Injectable so tests can drive the window/lockout math deterministically
+// instead of sleeping in real time for a 60s window and a 30s lockout.
+class PairingAttemptLimiter(private val now: () -> Long = System::currentTimeMillis) {
     private data class Record(var count: Int, var windowStart: Long, var lockedUntil: Long)
 
     private val records = mutableMapOf<String, Record>()
@@ -18,12 +20,12 @@ class PairingAttemptLimiter {
     @Synchronized
     fun isLocked(address: String): Boolean {
         val record = records[address] ?: return false
-        return System.currentTimeMillis() < record.lockedUntil
+        return now() < record.lockedUntil
     }
 
     @Synchronized
     fun recordFailure(address: String) {
-        val now = System.currentTimeMillis()
+        val now = now()
         val record = records.getOrPut(address) { Record(0, now, 0) }
         if (now - record.windowStart > WINDOW_MILLIS) {
             record.count = 0

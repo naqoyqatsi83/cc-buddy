@@ -1,0 +1,31 @@
+name: Android Tests
+
+# Mirrors daemon-tests.yml's shape: runs on every push/PR touching the
+# Android app, separate from build-apk.yml's release-only signed build.
+# JVM unit tests only (testDebugUnitTest) -- no emulator/instrumented
+# tests here, so no android-actions/setup-android or AVD needed.
+on:
+  push:
+    paths:
+      - "android/**"
+  pull_request:
+    paths:
+      - "android/**"
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - run: ./gradlew testDebugUnitTest --console=plain

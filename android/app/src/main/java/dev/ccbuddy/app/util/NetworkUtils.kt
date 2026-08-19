@@ -25,13 +25,7 @@ object NetworkUtils {
             for (addr in addresses) {
                 if (addr !is Inet4Address) continue
                 if (addr.isLoopbackAddress) continue
-                val label = when {
-                    isTailscaleAddress(addr) -> "Tailscale"
-                    iface.name.contains("tailscale", ignoreCase = true) -> "Tailscale"
-                    iface.name.startsWith("wlan") -> "Wi-Fi"
-                    else -> iface.name
-                }
-                results.add(LocalAddress(label, addr.hostAddress ?: continue))
+                results.add(LocalAddress(labelFor(iface.name, addr), addr.hostAddress ?: continue))
             }
         }
         return results
@@ -46,10 +40,20 @@ object NetworkUtils {
      * is what actually works here, and is also what still finds Tailscale
      * when mDNS can't (mDNS doesn't route across the VPN).
      */
-    private fun isTailscaleAddress(addr: Inet4Address): Boolean {
+    internal fun isTailscaleAddress(addr: Inet4Address): Boolean {
         val bytes = addr.address
         val first = bytes[0].toInt() and 0xFF
         val second = bytes[1].toInt() and 0xFF
         return first == 100 && second in 64..127
+    }
+
+    // Extracted from localAddresses() above so the labeling logic itself
+    // (not the real NetworkInterface enumeration, which needs a device/
+    // emulator) is unit-testable directly.
+    internal fun labelFor(ifaceName: String, addr: Inet4Address): String = when {
+        isTailscaleAddress(addr) -> "Tailscale"
+        ifaceName.contains("tailscale", ignoreCase = true) -> "Tailscale"
+        ifaceName.startsWith("wlan") -> "Wi-Fi"
+        else -> ifaceName
     }
 }
