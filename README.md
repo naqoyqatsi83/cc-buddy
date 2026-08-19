@@ -18,8 +18,7 @@ Claude Code keeps working on your machine. Your phone gets a live terminal, a nu
 <div align="center">
   <img src="assets/pairing-screen.png" alt="CC Buddy Android pairing screen" width="300">
   <img src="assets/settings-screen.png" alt="CC Buddy Android settings screen" width="300">
-  <p><em>Pairing screen (PIN, addresses, paired sessions) and the settings screen (font size, compact mode).</em></p>
-  <p><sub>⚠️ Screenshots predate v0.3.0 (TLS pairing, connection-quality indicator, TTS, dynamic quick-replies) — pending update.</sub></p>
+  <p><em>Pairing screen (PIN, addresses, paired sessions) and the settings screen (font size, compact mode, OEM battery management, read notifications aloud). Local network addresses redacted.</em></p>
 </div>
 
 ## What You Get
