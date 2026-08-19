@@ -5,6 +5,16 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- `npm run build` in `buddy-daemon/` could leave the globally-linked
+  `buddy` command unusable (`Permission denied`) after any rebuild.
+  `npm link` sets `dist/cli.js`'s executable bit once at link time, but
+  `tsc` recreates that file from scratch on every build without
+  preserving it — since `buddy` is `npm link`ed straight to this repo's
+  `buddy-daemon/`, that's the exact file it runs. A new `postbuild` step
+  re-applies the executable bit after every build, so this can't recur
+  regardless of who runs `npm run build` or how.
+
 ### Added
 - Unit tests for the daemon's parsing/heuristic logic, the kind of thing
   that silently regresses without coverage: menu-option detection and
