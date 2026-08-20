@@ -3,6 +3,17 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.6.1] - 2026-08-20
+
+### Fixed
+- The daemon crashed outright when a reconnect attempt timed out or a
+  peer's token/cert was rejected: `ws.terminate()` on a not-yet-open
+  socket emits `'error'` asynchronously, but the reconnect logic stripped
+  all of the socket's listeners (including `error`) right before that
+  event fired, leaving it unhandled and crashing the whole process.
+  `error` is now left attached (it's a no-op once the attempt has
+  settled) so the async emission is safely absorbed instead of crashing.
+
 ## [0.6.0] - 2026-08-20
 
 ### Added
