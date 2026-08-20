@@ -3,6 +3,21 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+- The terminal mirror now accepts live keyboard input directly — typing,
+  backspace, and arrow keys edit the real PC prompt in place (e.g. a
+  Tab-completed suggestion is now actually editable, not just
+  append-only) instead of only going through the separate reply text
+  field. xterm's own key handling turns keystrokes into the right escape
+  sequences; they're forwarded straight to the PTY over the same
+  raw-keystroke channel the Tab button already used (#12).
+- Two new Settings toggles: "Quick-reply buttons" (the menu-number/y-n/
+  Enter/Tab shortcut row, on by default) and "Reply text field" (the
+  separate append-and-send field, off by default now that typing
+  directly into the terminal covers that).
+
 ## [0.4.1] - 2026-08-19
 
 ### Added

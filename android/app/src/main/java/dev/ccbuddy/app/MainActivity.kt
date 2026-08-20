@@ -70,6 +70,8 @@ class MainActivity : ComponentActivity() {
                     val compactMode by app.settingsStore.compactMode.collectAsState()
                     val showConnectionDetails by app.settingsStore.showConnectionDetails.collectAsState()
                     val readNotificationsAloud by app.settingsStore.readNotificationsAloud.collectAsState()
+                    val showQuickReplyButtons by app.settingsStore.showQuickReplyButtons.collectAsState()
+                    val showReplyTextField by app.settingsStore.showReplyTextField.collectAsState()
                     // Only the very first bridge of the app's lifetime auto-opens the
                     // terminal (first-pairing convenience). Without this, returning to
                     // the list to pair a second session and having it connect would
@@ -124,6 +126,8 @@ class MainActivity : ComponentActivity() {
                             compactMode = compactMode,
                             showConnectionDetails = showConnectionDetails,
                             readNotificationsAloud = readNotificationsAloud,
+                            showQuickReplyButtons = showQuickReplyButtons,
+                            showReplyTextField = showReplyTextField,
                             batteryOptimizationExempt = batteryOptimizationExempt,
                             onRequestBatteryExemption = {
                                 requestBatteryExemption.launch(ignoreBatteryOptimizationsIntent(this@MainActivity))
@@ -141,6 +145,8 @@ class MainActivity : ComponentActivity() {
                             onCompactModeChange = { app.settingsStore.setCompactMode(it) },
                             onShowConnectionDetailsChange = { app.settingsStore.setShowConnectionDetails(it) },
                             onReadNotificationsAloudChange = { app.settingsStore.setReadNotificationsAloud(it) },
+                            onShowQuickReplyButtonsChange = { app.settingsStore.setShowQuickReplyButtons(it) },
+                            onShowReplyTextFieldChange = { app.settingsStore.setShowReplyTextField(it) },
                             onBack = { showSettings = false }
                         )
                     } else if (viewingPeerId != null && viewingPeer != null) {
@@ -157,6 +163,8 @@ class MainActivity : ComponentActivity() {
                             fontSizeOverride = fontSizeOverride,
                             compactMode = compactMode,
                             readNotificationsAloud = readNotificationsAloud,
+                            showQuickReplyButtons = showQuickReplyButtons,
+                            showReplyTextField = showReplyTextField,
                             onToggleReadNotificationsAloud = {
                                 val newValue = !readNotificationsAloud
                                 app.settingsStore.setReadNotificationsAloud(newValue)

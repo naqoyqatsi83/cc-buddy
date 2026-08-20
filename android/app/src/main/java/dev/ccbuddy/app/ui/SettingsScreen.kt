@@ -26,6 +26,8 @@ fun SettingsScreen(
     compactMode: Boolean,
     showConnectionDetails: Boolean,
     readNotificationsAloud: Boolean,
+    showQuickReplyButtons: Boolean,
+    showReplyTextField: Boolean,
     batteryOptimizationExempt: Boolean,
     onRequestBatteryExemption: () -> Unit,
     onOpenBatterySettings: () -> Unit,
@@ -35,6 +37,8 @@ fun SettingsScreen(
     onCompactModeChange: (Boolean) -> Unit,
     onShowConnectionDetailsChange: (Boolean) -> Unit,
     onReadNotificationsAloudChange: (Boolean) -> Unit,
+    onShowQuickReplyButtonsChange: (Boolean) -> Unit,
+    onShowReplyTextFieldChange: (Boolean) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -122,6 +126,45 @@ fun SettingsScreen(
                 )
             }
             Switch(checked = readNotificationsAloud, onCheckedChange = onReadNotificationsAloudChange)
+        }
+
+        Spacer(Modifier.height(24.dp))
+        HorizontalDivider()
+        Spacer(Modifier.height(16.dp))
+
+        // The terminal itself now takes live keystrokes directly (typing,
+        // backspace, arrows all edit the real PC prompt in place) --
+        // these two just control the optional shortcuts around that.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Quick-reply buttons", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    "Menu-number / y-n / Enter / Tab shortcut row below the terminal",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            Switch(checked = showQuickReplyButtons, onCheckedChange = onShowQuickReplyButtonsChange)
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Reply text field", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    "Separate append-and-send field, alongside typing directly into the terminal",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            Switch(checked = showReplyTextField, onCheckedChange = onShowReplyTextFieldChange)
         }
 
         Spacer(Modifier.height(24.dp))

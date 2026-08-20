@@ -5,6 +5,7 @@ import android.util.Base64
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.ViewGroup
+import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.horizontalScroll
@@ -82,6 +83,8 @@ fun TerminalScreen(
     compactMode: Boolean = false,
     readNotificationsAloud: Boolean = false,
     onToggleReadNotificationsAloud: () -> Unit = {},
+    showQuickReplyButtons: Boolean = true,
+    showReplyTextField: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
@@ -224,6 +227,7 @@ fun TerminalScreen(
                     repeat(kotlin.math.abs(pages)) { sendScrollKey(down = pages > 0) }
                 },
                 onTap = { sendExpandToggle() },
+                onKeystroke = { data -> sendRaw(data) },
                 onReady = { webView = it }
             )
             // A narrow side column, not the bottom button row: keeping
@@ -312,41 +316,58 @@ fun TerminalScreen(
             Modifier.weight(1f)
         }
 
-        Row(
-            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(8.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            quickReplies.forEach { reply ->
-                TextButton(onClick = { send(reply) }, modifier = bottomButtonModifier, contentPadding = bottomButtonPadding) {
-                    Text(reply.ifEmpty { "⏎" })
+        if (showQuickReplyButtons) {
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                quickReplies.forEach { reply ->
+                    TextButton(onClick = { send(reply) }, modifier = bottomButtonModifier, contentPadding = bottomButtonPadding) {
+                        Text(reply.ifEmpty { "⏎" })
+                    }
                 }
-            }
-            // Tab must NOT submit like the replies above (no trailing
-            // Enter) — it's how you accept an autocomplete suggestion,
-            // which is a raw keystroke, not a complete answer.
-            TextButton(onClick = { sendRaw("\t") }, modifier = bottomButtonModifier, contentPadding = bottomButtonPadding) {
-                Text("⇥")
+                // Tab must NOT submit like the replies above (no trailing
+                // Enter) — it's how you accept an autocomplete suggestion,
+                // which is a raw keystroke, not a complete answer.
+                TextButton(onClick = { sendRaw("\t") }, modifier = bottomButtonModifier, contentPadding = bottomButtonPadding) {
+                    Text("⇥")
+                }
             }
         }
 
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = if (compactMode) 2.dp else 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            OutlinedTextField(
-                value = replyText,
-                onValueChange = { replyText = it },
-                modifier = replyFieldModifier,
-                singleLine = true,
-                placeholder = { Text("Reply…") }
-            )
-            Button(onClick = {
-                send(replyText)
-                replyText = ""
-            }, modifier = sendButtonModifier, contentPadding = sendButtonPadding) {
-                Text("Send")
+        if (showReplyTextField) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = if (compactMode) 2.dp else 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = replyText,
+                    onValueChange = { replyText = it },
+                    modifier = replyFieldModifier,
+                    singleLine = true,
+                    placeholder = { Text("Reply…") }
+                )
+                Button(onClick = {
+                    send(replyText)
+                    replyText = ""
+                }, modifier = sendButtonModifier, contentPadding = sendButtonPadding) {
+                    Text("Send")
+                }
             }
         }
+    }
+}
+
+// xterm's own keydown handling already turns backspace/arrows/typed chars
+// into the correct escape sequences (see index.html's disableStdin change,
+// #12 follow-up) -- this just relays that byte stream straight to the PTY
+// via TerminalScreen's sendRaw. JavascriptInterface methods run on a
+// background thread, not the UI thread, but sendRaw's CoroutineScope.launch
+// is safe to call from any thread.
+private class TerminalInputBridge(private val onKeystroke: (String) -> Unit) {
+    @JavascriptInterface
+    fun send(data: String) {
+        onKeystroke(data)
     }
 }
 
@@ -356,10 +377,12 @@ private fun TerminalWebView(
     modifier: Modifier = Modifier,
     onSwipePages: (Int) -> Unit,
     onTap: () -> Unit,
+    onKeystroke: (String) -> Unit,
     onReady: (WebView) -> Unit
 ) {
     val onSwipePagesState = rememberUpdatedState(onSwipePages)
     val onTapState = rememberUpdatedState(onTap)
+    val onKeystrokeState = rememberUpdatedState(onKeystroke)
     AndroidView(
         modifier = modifier,
         factory = { context ->
@@ -369,6 +392,10 @@ private fun TerminalWebView(
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
                 settings.javaScriptEnabled = true
+                addJavascriptInterface(
+                    TerminalInputBridge { data -> onKeystrokeState.value(data) },
+                    "AndroidInput"
+                )
                 // The terminal is not reflowed to fit the screen — it
                 // renders at the PC terminal's actual size, which is
                 // usually wider than the phone. Pinch-zoom lets you zoom

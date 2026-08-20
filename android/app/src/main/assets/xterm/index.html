@@ -65,10 +65,28 @@
       fontSize: 14,
       fontFamily: "monospace",
       theme: { background: "#262624", foreground: "#e0e0e0", cursor: "#D97757" },
-      disableStdin: true,
+      // Live keyboard editing (follow-up to #12): stdin used to be disabled
+      // entirely, with a separate append-only text field as the only way
+      // to send input -- which meant a Tab-completed suggestion already on
+      // the PC's prompt line couldn't be edited in place, only appended to.
+      // Enabling stdin lets xterm's own key handling (which already turns
+      // backspace/arrows/typed chars into the right escape sequences) feed
+      // straight through to the real PTY via onData below, exactly like a
+      // normal terminal app.
+      disableStdin: false,
       scrollback: 5000
     });
     term.open(document.getElementById("term"));
+
+    // Forward every keystroke xterm's own input handling produces straight
+    // to the PC's PTY, unbuffered -- AndroidInput is a WebView
+    // @JavascriptInterface bridge (see TerminalScreen.kt) that writes raw
+    // bytes with no Enter appended, same channel the Tab button already
+    // uses. Guarded since this file also briefly loads before Android has
+    // injected the interface.
+    term.onData(function (data) {
+      if (window.AndroidInput) window.AndroidInput.send(data);
+    });
 
     // Called from Android whenever the PC terminal's size is known (once
     // at pairing, again if the PC resizes its window). Font size is

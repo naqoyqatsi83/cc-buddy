@@ -51,6 +51,31 @@ class SettingsStore(context: Context) {
         _readNotificationsAloud.value = enabled
     }
 
+    // On by default -- the quick-reply row (menu numbers, y/n/Enter, Tab)
+    // and swipe-to-scroll are the fast path for the common case, worth
+    // keeping alongside direct terminal typing rather than making people
+    // opt back into them.
+    private val _showQuickReplyButtons = MutableStateFlow(prefs.getBoolean(KEY_QUICK_REPLY_BUTTONS, true))
+    val showQuickReplyButtons: StateFlow<Boolean> = _showQuickReplyButtons
+
+    // Off by default -- now that the terminal itself takes live keystrokes
+    // (see #12 follow-up: direct in-place editing of a Tab-completed
+    // prompt), the separate append-only field is redundant for most people;
+    // it stays available for anyone who prefers composing text before it
+    // hits the PTY.
+    private val _showReplyTextField = MutableStateFlow(prefs.getBoolean(KEY_REPLY_TEXT_FIELD, false))
+    val showReplyTextField: StateFlow<Boolean> = _showReplyTextField
+
+    fun setShowQuickReplyButtons(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_QUICK_REPLY_BUTTONS, enabled).apply()
+        _showQuickReplyButtons.value = enabled
+    }
+
+    fun setShowReplyTextField(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_REPLY_TEXT_FIELD, enabled).apply()
+        _showReplyTextField.value = enabled
+    }
+
     // The version string of the last update banner the user dismissed
     // (see UpdateChecker) -- null means nothing's been dismissed. Keyed by
     // version rather than a plain boolean so dismissing "update to 0.4.0"
@@ -68,6 +93,8 @@ class SettingsStore(context: Context) {
         private const val KEY_COMPACT = "compact_mode"
         private const val KEY_CONNECTION_DETAILS = "show_connection_details"
         private const val KEY_READ_ALOUD = "read_notifications_aloud"
+        private const val KEY_QUICK_REPLY_BUTTONS = "show_quick_reply_buttons"
+        private const val KEY_REPLY_TEXT_FIELD = "show_reply_text_field"
         private const val KEY_DISMISSED_UPDATE = "dismissed_update_version"
         const val MIN_FONT_SIZE = 8
         const val MAX_FONT_SIZE = 22
