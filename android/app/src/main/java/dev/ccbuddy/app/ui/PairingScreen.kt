@@ -43,7 +43,6 @@ fun PairingScreen(
     activePin: ActivePin?,
     localAddresses: List<LocalAddress>,
     peers: List<PeerSession>,
-    pendingRequest: PendingPairRequest?,
     showConnectionDetails: Boolean,
     batteryOptimizationExempt: Boolean,
     onRequestBatteryExemption: () -> Unit,
@@ -104,10 +103,6 @@ fun PairingScreen(
                 peers.forEach { peer -> PeerRow(peer, showConnectionDetails, onUnpair, onRename, onOpenTerminal) }
             }
         }
-    }
-
-    if (pendingRequest != null) {
-        PairRequestDialog(pendingRequest)
     }
 }
 
@@ -291,8 +286,13 @@ private fun RenamePeerDialog(
     )
 }
 
+// Public and rendered from MainActivity directly, not from here (#22
+// follow-up bug report) -- a pending request can arrive while the user is
+// on the Settings or Terminal screen, not just the session list this file
+// otherwise owns, and this dialog needs to show regardless of which one is
+// currently active.
 @Composable
-private fun PairRequestDialog(request: PendingPairRequest) {
+fun PairRequestDialog(request: PendingPairRequest) {
     AlertDialog(
         onDismissRequest = { request.result.complete(false) },
         title = { Text("Pairing request") },

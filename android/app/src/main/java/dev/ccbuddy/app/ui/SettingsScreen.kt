@@ -167,6 +167,22 @@ fun SettingsScreen(
             Switch(checked = showReplyTextField, onCheckedChange = onShowReplyTextFieldChange)
         }
 
+        Spacer(Modifier.height(4.dp))
+        // Volume keys only stop reading while CC Buddy is in the
+        // foreground (see MainActivity's dispatchKeyEvent) -- with the
+        // screen off or the app backgrounded, there's no Android API for
+        // an app to catch a volume-key press at all (a true "blind mute"
+        // would need an AccessibilityService, and even that turned out
+        // unreliable across OEMs for volume keys specifically -- tried and
+        // dropped, #22). Turning the screen off and back on is the
+        // reliable equivalent: CC Buddy stops reading the instant the
+        // screen goes off.
+        Text(
+            "Screen off/locked: press power once to turn the screen off (or back on) — that " +
+                "alone stops any in-progress reading.",
+            style = MaterialTheme.typography.bodySmall
+        )
+
         Spacer(Modifier.height(24.dp))
         HorizontalDivider()
         Spacer(Modifier.height(16.dp))

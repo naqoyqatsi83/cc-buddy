@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.view.KeyEvent
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -24,6 +25,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import dev.ccbuddy.app.ui.PairRequestDialog
 import dev.ccbuddy.app.ui.PairingScreen
 import dev.ccbuddy.app.ui.SettingsScreen
 import dev.ccbuddy.app.ui.TerminalScreen
@@ -44,6 +46,22 @@ class MainActivity : ComponentActivity() {
 
     private val requestBatteryExemption =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { /* state refreshes on resume */ }
+
+    // Any volume-key press silences an in-progress TTS reading (#22) --
+    // scoped to while this Activity has input focus, since a background/
+    // screen-off intercept would need an AccessibilityService, a much
+    // bigger permission ask for a "shut it up" convenience. Doesn't
+    // consume the event -- super still runs below, so volume changes
+    // normally too; stopReadingAloud() is a harmless no-op when nothing
+    // is currently speaking.
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN &&
+            (event.keyCode == KeyEvent.KEYCODE_VOLUME_UP || event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN)
+        ) {
+            stopReadingAloud(this)
+        }
+        return super.dispatchKeyEvent(event)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -119,6 +137,13 @@ class MainActivity : ComponentActivity() {
                     }
 
                     val viewingPeer = peers.find { it.id == viewingPeerId }
+                    // Rendered here, outside the screen switch below, so a
+                    // pairing request that arrives while on Settings or the
+                    // Terminal screen still shows the Accept/Deny dialog
+                    // instead of silently timing out unseen (bug report:
+                    // "permission question for pairing doesn't pop up on
+                    // settings — you have to get to main screen").
+                    pendingRequest?.let { PairRequestDialog(it) }
                     if (showSettings) {
                         androidx.activity.compose.BackHandler { showSettings = false }
                         SettingsScreen(
@@ -168,6 +193,7 @@ class MainActivity : ComponentActivity() {
                             onToggleReadNotificationsAloud = {
                                 val newValue = !readNotificationsAloud
                                 app.settingsStore.setReadNotificationsAloud(newValue)
+                                stopReadingAloud(this@MainActivity)
                                 Toast.makeText(
                                     this@MainActivity,
                                     if (newValue) "Read aloud: On" else "Read aloud: Off",
@@ -181,7 +207,6 @@ class MainActivity : ComponentActivity() {
                             activePin = activePin,
                             localAddresses = localAddresses,
                             peers = peers,
-                            pendingRequest = pendingRequest,
                             showConnectionDetails = showConnectionDetails,
                             batteryOptimizationExempt = batteryOptimizationExempt,
                             onRequestBatteryExemption = {

@@ -3,7 +3,10 @@ package dev.ccbuddy.app
 import android.app.Notification
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
@@ -33,6 +36,18 @@ class BuddyForegroundService : Service(), HookNotifier {
     private lateinit var nsdHelper: NsdHelper
     private lateinit var ttsSpeaker: TtsSpeaker
 
+    // Can't intercept the power button itself -- Android reserves it for
+    // lock/screen-off, no public API exists for a regular app (#22). The
+    // screen actually turning off is the closest reliable proxy for "the
+    // user just pressed power to shut this up," and needs no special
+    // permission to listen for (unlike an AccessibilityService, which is
+    // what true button interception while backgrounded/locked would take).
+    private val screenOffReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            ttsSpeaker.stop()
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         val app = application as BuddyApp
@@ -46,9 +61,20 @@ class BuddyForegroundService : Service(), HookNotifier {
         )
         nsdHelper = NsdHelper(this)
         ttsSpeaker = TtsSpeaker(applicationContext)
+        registerReceiver(screenOffReceiver, IntentFilter(Intent.ACTION_SCREEN_OFF))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Routed here (rather than a separate BroadcastReceiver) since a
+        // PendingIntent.getService() targeting this same class is simpler
+        // than standing up a new component just for one action button
+        // (#22). Must short-circuit before the normal startup below --
+        // re-running wsServer.start()/nsdHelper.register() on an already-
+        // running service would rebind the same port/service name.
+        if (intent?.action == ACTION_STOP_READING) {
+            ttsSpeaker.stop()
+            return START_STICKY
+        }
         startForeground(FOREGROUND_NOTIFICATION_ID, buildNotification())
         wsServer.start()
         nsdHelper.register()
@@ -57,6 +83,7 @@ class BuddyForegroundService : Service(), HookNotifier {
     }
 
     override fun onDestroy() {
+        unregisterReceiver(screenOffReceiver)
         nsdHelper.unregister()
         wsServer.stop()
         ttsSpeaker.shutdown()
@@ -88,19 +115,33 @@ class BuddyForegroundService : Service(), HookNotifier {
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE
         )
-        val notification = NotificationCompat.Builder(this, ALERT_NOTIFICATION_CHANNEL_ID)
+        val readAloud = (application as BuddyApp).settingsStore.readNotificationsAloud.value
+        val notificationBuilder = NotificationCompat.Builder(this, ALERT_NOTIFICATION_CHANNEL_ID)
             .setContentTitle(getString(R.string.app_name))
             .setContentText(message)
             .setSmallIcon(android.R.drawable.stat_sys_warning)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .setContentIntent(openApp)
-            .build()
-        NotificationManagerCompat.from(this).notify(ALERT_NOTIFICATION_ID, notification)
+        // Only offer this when there's actually something to stop (#22) --
+        // otherwise it's a dead button on every plain visual notification.
+        if (readAloud) {
+            val stopReading = PendingIntent.getService(
+                this, 2,
+                Intent(this, BuddyForegroundService::class.java).setAction(ACTION_STOP_READING),
+                PendingIntent.FLAG_IMMUTABLE
+            )
+            notificationBuilder.addAction(
+                android.R.drawable.ic_lock_silent_mode,
+                getString(R.string.stop_reading),
+                stopReading
+            )
+        }
+        NotificationManagerCompat.from(this).notify(ALERT_NOTIFICATION_ID, notificationBuilder.build())
 
         // Additive, not a replacement for the visual notification above --
         // opt-in via Settings, off by default.
-        if ((application as BuddyApp).settingsStore.readNotificationsAloud.value) {
+        if (readAloud) {
             ttsSpeaker.speak(question ?: message)
         }
     }

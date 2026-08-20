@@ -3,6 +3,30 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+- A "Stop reading" action button on the "Claude needs you" notification
+  silences an in-progress TTS reading — previously the only way to stop
+  it was a full engine `shutdown()`, not exposed anywhere in the UI (#22).
+- Tapping the 🔊/🔇 icon in the terminal top bar, or pressing a volume
+  key while CC Buddy is in the foreground, also stops any in-progress
+  reading (not just toggles the setting for future notifications).
+- Turning the screen off (or back on) stops an in-progress reading too —
+  useful when the phone is locked and you just want it to be quiet.
+
+### Fixed
+- The daemon's logger wrote warnings/errors straight to the console —
+  since `buddy start` writes the wrapped PTY's raw output to that same
+  process's stdout, this interleaved with and visibly corrupted Claude
+  Code's TUI (most noticeably when a stale paired session tried to
+  reconnect after the phone app was reinstalled and got a cert/token
+  rejection). Logging is now file-only (`~/.buddy/daemon.log`).
+- The pairing accept/deny dialog only ever rendered from the session-list
+  screen — a request arriving while on Settings or in the Terminal view
+  wasn't shown at all until you navigated back. Now renders regardless of
+  which screen is active.
+
 ## [0.5.0] - 2026-08-20
 
 ### Added

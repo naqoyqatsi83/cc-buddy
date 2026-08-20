@@ -43,12 +43,14 @@ function write(level: Level, message: string, meta?: Record<string, unknown>) {
     meta ? " " + JSON.stringify(meta) : ""
   }\n`;
 
-  // Console output is unchanged/unconditional -- this is additive
-  // persistence, not a replacement for what's already visible in the
-  // terminal `buddy start` is running in.
-  if (level === "error") console.error(message, meta ?? "");
-  else if (level === "warn") console.warn(message, meta ?? "");
-
+  // Deliberately file-only, never console.error/warn -- `buddy start`'s
+  // PTY output is written straight to this same process's stdout (see
+  // session.ts's ptyProcess.onData), and Claude Code's TUI does absolute-
+  // cursor-position redraws assuming exclusive control of that terminal.
+  // A stray console write (e.g. a reconnect's cert/token rejection,
+  // logged mid-session) interleaves with that stream and visibly
+  // corrupts the live screen instead of just scrolling past harmlessly.
+  // The log file below is the only place this should surface.
   try {
     mkdirSync(LOG_DIR, { recursive: true, mode: 0o700 });
     rotateIfNeeded();

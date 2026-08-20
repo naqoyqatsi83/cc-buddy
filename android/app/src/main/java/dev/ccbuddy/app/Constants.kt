@@ -17,3 +17,7 @@ const val FOREGROUND_NOTIFICATION_ID = 1
  * and silent, this one should actually buzz the phone. */
 const val ALERT_NOTIFICATION_CHANNEL_ID = "buddy_alerts"
 const val ALERT_NOTIFICATION_ID = 2
+
+/** Intent action for the alert notification's "Stop reading" button (#22) —
+ * silences the current TTS utterance without tearing down the engine. */
+const val ACTION_STOP_READING = "dev.ccbuddy.app.ACTION_STOP_READING"

@@ -3,4 +3,5 @@
     <string name="notification_channel_name">CC Buddy listening</string>
     <string name="notification_listening">CC Buddy — listening for pairing</string>
     <string name="alert_channel_name">Claude needs you</string>
+    <string name="stop_reading">Stop reading</string>
 </resources>

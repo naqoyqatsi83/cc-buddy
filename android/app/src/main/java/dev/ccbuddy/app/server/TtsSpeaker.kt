@@ -26,6 +26,14 @@ class TtsSpeaker(context: Context) {
         tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)
     }
 
+    // Silences whatever's currently being read, without tearing down the
+    // engine like shutdown() does -- speak() still works normally after
+    // this (#22: needs to be safe to call from a notification action
+    // that can fire any number of times over the service's lifetime).
+    fun stop() {
+        tts?.stop()
+    }
+
     fun shutdown() {
         tts?.stop()
         tts?.shutdown()
