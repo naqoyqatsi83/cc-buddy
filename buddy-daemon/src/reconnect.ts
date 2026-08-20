@@ -86,7 +86,14 @@ async function attemptReconnect(session: BuddySession, peerId: string, attempt: 
   const retry = () => {
     if (settled) return;
     settled = true;
-    ws.removeAllListeners();
+    // Not removeAllListeners(): the timeout branch below calls ws.terminate()
+    // *before* retry(), and terminate() on a not-yet-open socket emits
+    // 'error' asynchronously -- stripping the 'error' listener here would
+    // leave that emission unhandled and crash the process (Node throws on
+    // an unlistened 'error' event). The error handler is idempotent via the
+    // settled guard, so it's safe to leave attached.
+    ws.removeAllListeners("open");
+    ws.removeAllListeners("message");
     scheduleReconnect(session, peerId, attempt + 1);
   };
 
@@ -120,6 +127,7 @@ async function attemptReconnect(session: BuddySession, peerId: string, attempt: 
   });
 
   ws.on("error", () => {
+    if (settled) return;
     clearTimeout(timeout);
     logger.info("reconnect attempt failed, retrying", { peerId, deviceName: peer.name, attempt });
     retry();
