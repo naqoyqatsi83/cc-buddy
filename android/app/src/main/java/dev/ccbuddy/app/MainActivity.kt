@@ -6,7 +6,6 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.view.KeyEvent
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -46,22 +45,6 @@ class MainActivity : ComponentActivity() {
 
     private val requestBatteryExemption =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { /* state refreshes on resume */ }
-
-    // Any volume-key press silences an in-progress TTS reading (#22) --
-    // scoped to while this Activity has input focus, since a background/
-    // screen-off intercept would need an AccessibilityService, a much
-    // bigger permission ask for a "shut it up" convenience. Doesn't
-    // consume the event -- super still runs below, so volume changes
-    // normally too; stopReadingAloud() is a harmless no-op when nothing
-    // is currently speaking.
-    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (event.action == KeyEvent.ACTION_DOWN &&
-            (event.keyCode == KeyEvent.KEYCODE_VOLUME_UP || event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN)
-        ) {
-            stopReadingAloud(this)
-        }
-        return super.dispatchKeyEvent(event)
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

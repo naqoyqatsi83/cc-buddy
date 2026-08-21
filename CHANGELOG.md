@@ -3,6 +3,16 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.6.2] - 2026-08-21
+
+### Removed
+- Volume-key TTS mute — pressing a volume key while CC Buddy was
+  foregrounded silenced any in-progress reading, but it also fired on a
+  normal volume adjustment, muting when you just wanted it louder or
+  quieter (#23). The notification "Stop reading" button, tapping the
+  🔊/🔇 icon in the terminal top bar, and turning the screen off/on
+  remain as ways to stop a reading.
+
 ## [0.6.1] - 2026-08-20
 
 ### Fixed
