@@ -9,7 +9,12 @@ set, stop and tell the user: "This session wasn't launched through
 `buddy start` — relaunch with `buddy start` (or your `claude` alias) to use
 CC Buddy pairing." Do nothing else in that case.
 
-`$1` is an optional peer id. If it's missing, first run
+`$1` is an optional peer id. Before using it, compare it against the raw
+`<command-args>` the user actually typed — a known harness bug can
+mis-substitute positional arguments (see cc-buddy#24); if `$1` doesn't
+match what the user typed, use the value from `<command-args>` instead.
+
+If it's missing, first run
 `curl -s "$BUDDY_DAEMON_URL/sessions/$BUDDY_SESSION_ID/peers"` and:
 - if there are zero peers, tell the user there's nothing to unpair and stop.
 - if there's exactly one peer, use its `id` as the target.
