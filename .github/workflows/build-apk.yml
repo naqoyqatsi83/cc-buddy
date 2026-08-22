@@ -68,6 +68,13 @@ jobs:
           name: cc-buddy-release-apk
           path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
+          # Tagged builds already publish the APK as a permanent GitHub
+          # Release asset below -- this copy is only useful for a short
+          # window (e.g. inspecting a workflow_dispatch/non-tag build), so
+          # don't let it linger and eat into the account's shared Actions
+          # storage quota (public repos count toward the meter too, even
+          # though their usage is billed at $0).
+          retention-days: 7
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
