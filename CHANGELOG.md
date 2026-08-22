@@ -3,6 +3,16 @@
 All notable changes to this project are documented here.
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+- `/buddy-pair` and `/buddy-unpair` now tell the assistant to cross-check
+  their `$1`/`$2` argument substitution against what was actually typed
+  before running anything — a harness bug occasionally mis-substitutes
+  positional slash-command arguments (e.g. `$1` resolving to the second
+  argument's value, `$2` left as an unsubstituted literal), which twice
+  produced a pairing request with the IP and PIN swapped (#24).
+
 ## [0.6.2] - 2026-08-21
 
 ### Removed
